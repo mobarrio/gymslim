@@ -1,5 +1,5 @@
-// Fichero: controllers/appController.js (CORRECCIÓN FINAL DE ZONA HORARIA)
-const { ApiCache } = require('../database');
+// Fichero: controllers/appController.js (Versión Kilo - MODIFICADO)
+const { ApiCache, FavoriteActivity } = require('../database'); 
 const { fetchAllApiData } = require('../services/cacheService');
 const { logDebug } = require('../utils/logger'); 
 
@@ -15,12 +15,6 @@ const helpers = {
 
 // --- Funciones Robustas de Fecha ---
 
-/**
- * Función para formatear una fecha al estándar YYYY-MM-DD local,
- * asegurando que no retrocede por diferencias de huso horario (UTC - Local).
- * @param {Date} dateObj
- * @returns {string} Fecha formateada.
- */
 function formatDate(dateObj) {
   const year = dateObj.getFullYear();
   const month = String(dateObj.getMonth() + 1).padStart(2, '0');
@@ -28,16 +22,10 @@ function formatDate(dateObj) {
   return `${year}-${month}-${day}`;
 }
 
-/**
- * Función para obtener la fecha de hoy YYYY-MM-DD
- */
 function getTodayString() {
   return formatDate(new Date());
 }
 
-/**
- * Función para sumar días a una fecha de manera segura.
- */
 const addDays = (date, days) => {
   const d = new Date(date);
   d.setDate(date.getDate() + days);
@@ -47,48 +35,35 @@ const addDays = (date, days) => {
 // --- Fin Funciones Robustas de Fecha ---
 
 
-/**
- * Convierte un string de rango (ej. 'tomorrow') en un objeto { start, end }
- * @param {string} rangeKey - La clave del rango (today, tomorrow, etc.)
- * @returns {{start: string, end: string}}
- */
 function calculateDatesFromRangeKey(rangeKey) {
-  // Siempre trabajamos con la fecha de hoy al inicio de la jornada (00:00:00)
   const today = new Date();
   today.setHours(0, 0, 0, 0); 
   
   let startDate = formatDate(today);
   let endDate = formatDate(today);
-  
-  let tempDate = new Date(today); // Usamos un objeto temporal para los cálculos
+  let tempDate = new Date(today); 
 
   switch (rangeKey) {
     case 'tomorrow':
-      // Mañana es Hoy + 1 día
       tempDate = addDays(today, 1);
       startDate = formatDate(tempDate);
       endDate = formatDate(tempDate);
       break;
       
     case 'next_7':
-      // Próximos 7 días: Hoy hasta Hoy + 6 días
       tempDate = addDays(today, 6); 
       endDate = formatDate(tempDate);
       break;
       
     case 'this_week':
-      // 1. Encontrar el Lunes de esta semana
-      const dayOfWeek = today.getDay(); // 0=Dom, 1=Lun
+      const dayOfWeek = today.getDay(); 
       const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
       const monday = addDays(today, diffToMonday);
-      
-      // 2. Encontrar el Domingo de esta semana
       const sunday = addDays(monday, 6);
 
       startDate = formatDate(monday);
       endDate = formatDate(sunday);
       
-      // 3. CRÍTICO: Asegurarnos de que el rango no empieza en el pasado
       const todayStr = getTodayString();
       if (startDate < todayStr) {
         startDate = todayStr;
@@ -97,7 +72,6 @@ function calculateDatesFromRangeKey(rangeKey) {
       
     case 'today':
     default:
-      // start y end ya son hoy
       break;
   }
   
@@ -117,9 +91,12 @@ exports.showHorario = (req, res) => {
   });
 };
 
-// GET /list
+// GET /list (MODIFICADO para FAVORITAS por defecto)
 exports.showList = async (req, res) => {
-  const { start, end, refresh, activity, range_key } = req.query;
+  // CRÍTICO: Si filter no existe, asumimos 'favorites' (antes era 'all')
+  const { start, end, refresh, activity, range_key, filter } = req.query; 
+  const currentFilter = filter || 'favorites'; // <-- ¡CAMBIO CRÍTICO AQUÍ!
+  
   let filterStartDate, filterEndDate, effectiveRangeKey;
 
   const errorRender = (message) => {
@@ -130,7 +107,7 @@ exports.showList = async (req, res) => {
     });
   };
 
-  // --- LÓGICA DE MANEJO DE RANGO (CRÍTICO) ---
+  // --- LÓGICA DE MANEJO DE RANGO ---
   if (range_key) {
     if (range_key === 'custom') {
       return res.redirect('/horario');
@@ -149,15 +126,15 @@ exports.showList = async (req, res) => {
        effectiveRangeKey = 'custom';
     }
   } else {
-    // Default: Redirigir a 'today' si no hay parámetros
-    return res.redirect('/list?range_key=today');
+    // Si no hay parámetros, redirigimos a 'today'
+    return res.redirect('/list?range_key=today&filter=' + currentFilter); 
   }
   // --- FIN LÓGICA DE MANEJO DE RANGO ---
   
   const selectedActivity = activity || 'todas';
   const today = getTodayString();
   
-  logDebug(3, `Filtro final: ${filterStartDate} a ${filterEndDate}, Activity: ${selectedActivity}, Refresh: ${!!refresh}`);
+  logDebug(3, `Filtro final: ${filterStartDate} a ${filterEndDate}, Activity: ${selectedActivity}, Filter Type: ${currentFilter}, Refresh: ${!!refresh}`);
 
   // --- Validación de Fechas ---
   if (!filterStartDate || !filterEndDate) { return errorRender('Fechas de inicio y fin son requeridas.'); }
@@ -166,54 +143,71 @@ exports.showList = async (req, res) => {
 
   try {
     const isRefresh = refresh === 'true';
+    const userId = req.session.userId;
     
-    // 1. Obtener datos (de la API o la caché)
+    // 1. Obtener datos y favoritos
     const allEventsFromApi = await fetchAllApiData(isRefresh);
-    logDebug(3, `Total de eventos únicos de API/Cache: ${allEventsFromApi.length}`);
-
-    // 2. Generar lista de actividades
+    let favoriteNames = [];
+    
+    const favoriteEntries = await FavoriteActivity.findAll({
+        where: { userId: userId },
+        attributes: ['activityName']
+    });
+    favoriteNames = favoriteEntries.map(e => e.activityName);
+    
+    // 2. Generar lista de actividades para el dropdown
     const allActivityNames = [...new Set(allEventsFromApi.map(e => e.activity_name))]
       .filter(name => name)
       .sort();
-    logDebug(3, `Generadas ${allActivityNames.length} actividades únicas para el filtro.`);
 
-    // 3. FILTRO 1: RANGO DE FECHAS (Filtro de usuario)
-    const eventsInDateRange = allEventsFromApi.filter(event => {
-      const eventDateStr = event.start.split('T')[0];
-      return eventDateStr >= filterStartDate && eventDateStr <= filterEndDate;
-    });
-    logDebug(3, `Eventos tras Filtro de Rango: ${eventsInDateRange.length}`);
-    
-    // 4. FILTRO 2: HORA ACTUAL (Solo para el día actual)
-    const now = new Date(); 
-    const eventsAfterNow = eventsInDateRange.filter(event => {
+    // --- APLICACIÓN DE FILTROS ---
+
+    // Filtro inicial: Rango de Fechas y Hora Actual
+    let eventsFiltered = allEventsFromApi.filter(event => {
       const eventDateStr = event.start.split('T')[0];
       
-      // Si la fecha del evento es HOY, filtramos por la hora.
-      if (eventDateStr === today) {
-        const eventStartTime = new Date(event.start);
-        // Debe ser MAYOR o IGUAL a la hora actual
-        return eventStartTime >= now; 
+      // Filtro 1: Rango de fechas
+      if (eventDateStr < filterStartDate || eventDateStr > filterEndDate) {
+          return false;
       }
       
-      // Si la fecha del evento es FUTURA, siempre es true.
-      return eventDateStr > today;
+      // Filtro 2: Hora actual (para hoy)
+      if (eventDateStr === today) {
+        const eventStartTime = new Date(event.start);
+        return eventStartTime >= new Date(); 
+      }
+      
+      return true;
     });
-    logDebug(3, `Eventos tras Filtro de Hora: ${eventsAfterNow.length}`);
 
-    // 5. FILTRO 3: ACTIVIDAD
-    const finalFilteredEvents = (selectedActivity === 'todas')
-      ? eventsAfterNow
-      : eventsAfterNow.filter(event => event.activity_name === selectedActivity);
-    logDebug(3, `Eventos tras Filtro de Actividad: ${finalFilteredEvents.length}`);
+    // Filtro 3: FAVORITAS (Si el filtro es 'favorites')
+    if (currentFilter === 'favorites') {
+        eventsFiltered = eventsFiltered.filter(event => 
+            favoriteNames.includes(event.activity_name)
+        );
+        logDebug(3, `Eventos tras Filtro Favoritas: ${eventsFiltered.length} (de ${favoriteNames.length} favoritas)`);
+    }
 
-    // 6. Renderizar
+
+    // Filtro 4: ACTIVIDAD (Filtro de dropdown)
+    if (selectedActivity !== 'todas') {
+        eventsFiltered = eventsFiltered.filter(event => 
+            event.activity_name === selectedActivity
+        );
+        logDebug(3, `Eventos tras Filtro de Actividad: ${eventsFiltered.length}`);
+    }
+    // --- FIN APLICACIÓN DE FILTROS ---
+
+
+    // 3. Renderizar
     res.render('list', {
-      events: finalFilteredEvents,
+      events: eventsFiltered,
       allActivityNames: allActivityNames,
+      favoriteNames: favoriteNames, 
       startDate: filterStartDate,
       endDate: filterEndDate,
       selectedActivity: selectedActivity,
+      currentFilter: currentFilter, 
       helpers: helpers,
       range_key: effectiveRangeKey
     });

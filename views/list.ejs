@@ -5,11 +5,47 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GYMSLIM - Horario de Clases</title>
     <link rel="stylesheet" href="/css/style.css">
-    <style> body { padding-top: 50px; } </style> <!-- Espacio para el nav fijo -->
+    <style>
+        body { padding-top: 70px; } /* Espacio para el nav fijo */
+        .clase-favorite-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 0;
+            margin-left: 10px;
+            color: #ccc;
+            font-size: 1.2em;
+            transition: color 0.2s, transform 0.2s;
+            vertical-align: middle;
+        }
+        .clase-favorite-btn:hover {
+            transform: scale(1.1);
+        }
+        .clase-favorite-btn.active {
+            color: #ff9800; /* Color naranja para favorito activo */
+        }
+        .clase-favorite-btn.active:hover {
+            color: #d68900;
+        }
+        .clase-info {
+            display: flex;
+            align-items: center;
+            justify-content: space-between; /* Espacio para el botón de favorito */
+        }
+        .clase-details-group {
+            display: flex;
+            align-items: center;
+        }
+        .filter-controls {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+            align-items: center;
+        }
+    </style>
 </head>
 <body>
-    
-    <%- include('partials/_nav') %>
+    <%- include('./partials/_nav') %>
 
     <!-- Modal para Avatares -->
     <div id="imageModal">
@@ -22,32 +58,51 @@
     </div>
 
     <div class="container">
-        <!-- 
-          ¡Eliminada la cabecera estática de la vAlfa! 
-          El _nav la reemplaza.
-        -->
         <h2>Clases de <%= startDate %> a <%= endDate %></h2>
 
-        <!-- Filtro de Actividad -->
-        <form id="filterForm" action="/list" method="GET">
-            <label for="activity_filter">Filtrar por Actividad:</label>
-            <select id="activity_filter" name="activity" onchange="this.form.submit()">
-                <option value="todas" <%= selectedActivity === 'todas' ? 'selected' : '' %>>Todas</option>
-                <% allActivityNames.forEach(name => { %>
-                    <option value="<%= name %>" <%= selectedActivity === name ? 'selected' : '' %>>
-                        <%= name %>
-                    </option>
-                <% }) %>
-            </select>
-            <input type="hidden" name="start" value="<%= startDate %>">
-            <input type="hidden" name="end" value="<%= endDate %>">
-        </form>
+        <div class="filter-controls">
+            <!-- Selector 1: Filtro por Actividad (Existente) -->
+            <form id="activityFilterForm" action="/list" method="GET">
+                <label for="activity_filter">Filtrar por Actividad:</label>
+                <select id="activity_filter" name="activity" onchange="this.form.submit()">
+                    <option value="todas" <%= selectedActivity === 'todas' ? 'selected' : '' %>>Todas</option>
+                    <% allActivityNames.forEach(name => { %>
+                        <option value="<%= name %>" <%= selectedActivity === name ? 'selected' : '' %>>
+                            <%= name %>
+                        </option>
+                    <% }) %>
+                </select>
+                <!-- Mantener parámetros de fecha y filtro de favoritos -->
+                <input type="hidden" name="start" value="<%= startDate %>">
+                <input type="hidden" name="end" value="<%= endDate %>">
+                <input type="hidden" name="filter" value="<%= currentFilter %>"> 
+            </form>
 
-        <!-- Mensaje si no hay clases -->
+            <!-- Selector 2: Filtro Favoritas (NUEVO) -->
+            <form id="favoriteFilterForm" action="/list" method="GET">
+                <label for="filter_type">Mostrar Clases:</label>
+                <select id="filter_type" name="filter" onchange="this.form.submit()">
+                    <option value="all" <%= currentFilter === 'all' ? 'selected' : '' %>>Todas las clases</option>
+                    <option value="favorites" <%= currentFilter === 'favorites' ? 'selected' : '' %>>Mis Favoritas</option>
+                </select>
+                <!-- Mantener parámetros de fecha y actividad -->
+                <input type="hidden" name="start" value="<%= startDate %>">
+                <input type="hidden" name="end" value="<%= endDate %>">
+                <input type="hidden" name="activity" value="<%= selectedActivity %>">
+            </form>
+            
+            <!-- ELIMINADO: Enlace a Gestión de Favoritas (Ahora en _nav.ejs) -->
+        </div>
+
+
         <% if (!events || events.length === 0) { %>
             <hr>
             <p>
-                <% if (startDate === endDate) { %>
+                <% if (currentFilter === 'favorites' && favoriteNames.length === 0) { %>
+                    No has marcado ninguna actividad como favorita.
+                <% } else if (currentFilter === 'favorites' && events.length === 0) { %>
+                    No hay clases favoritas programadas en este rango de fechas.
+                <% } else if (startDate === endDate) { %>
                     No hay más clases programadas para hoy (<%= startDate %>).
                 <% } else { %>
                     No hay clases futuras programadas entre <%= startDate %> y <%= endDate %>.
@@ -65,31 +120,45 @@
 
                 <% events.forEach(event => { %>
                     <%
-                        // 'helpers' se pasa desde el controlador appController
                         const instructor = helpers.obtenerInstructor(event);
                         const avatar = helpers.obtenerAvatar(event);
                         const plazas = helpers.formatearPlazas(event.booking_info.places);
                         const fecha = helpers.formatearFecha(event.mobile);
                         const id = event.session_id;
                         const roomName = event.room || 'N/A';
+                        const activityName = event.activity_name || '';
+
+                        // Determinar si esta actividad es favorita para el usuario actual
+                        const isFavorite = favoriteNames.includes(activityName);
                     %>
                     <tr>
                         <td>
                             <div class="clase-info">
-                                <img src="<%= avatar %>" class="clase-avatar zoomable-avatar" alt="Avatar">
-                                <div class="clase-details">
-                                    <span class="clase-title"><%= event.title || 'N/A' %></span>
-                                    <span class="clase-subtitle">
-                                        <%= roomName %> 
-                                        <%= (instructor && instructor !== 'Gimnasio' && instructor !== 'N/A') ? '- ' + instructor : '' %>
-                                    </span>
-                                 </div>
+                                <div class="clase-details-group">
+                                    <img src="<%= avatar %>" class="clase-avatar zoomable-avatar" alt="Avatar">
+                                    <div class="clase-details">
+                                        <span class="clase-title"><%= event.title || 'N/A' %></span>
+                                        <span class="clase-subtitle">
+                                            <%= roomName %> 
+                                            <%= (instructor && instructor !== 'Gimnasio' && instructor !== 'N/A') ? '- ' + instructor : '' %>
+                                        </span>
+                                    </div>
+                                </div>
+                                
+                                <!-- Botón de Favorito (NUEVO) -->
+                                <button class="clase-favorite-btn <%= isFavorite ? 'active' : '' %>"
+                                        data-activity="<%= activityName %>"
+                                        data-action="<%= isFavorite ? 'remove' : 'add' %>"
+                                        title="<%= isFavorite ? 'Quitar de Favoritas' : 'Añadir a Favoritas' %>">
+                                    <!-- Icono de Corazón SVG (Relleno si es favorito) -->
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="<%= isFavorite ? 'currentColor' : 'none' %>" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+                                </button>
+                                
                             </div>
                         </td>
                         <td><%= fecha %></td>
                         <td><%= plazas %></td>
                         <td>
-                            <!-- Botón de Reserva (vBeta) -->
                             <button class="sesion-link btn-reservar" 
                                     data-session-id="<%= id %>" 
                                     data-room-name="<%= roomName %>">
@@ -102,6 +171,7 @@
         <% } %>
     </div>
 
+    <!-- El script main.js ahora contiene la lógica para los botones de favoritos -->
     <script src="/js/main.js"></script>
 </body>
 </html>

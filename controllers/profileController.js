@@ -1,5 +1,5 @@
-// Fichero: controllers/profileController.js (MODIFICADO)
-const { User, TrustedDevice } = require('../database');
+// Fichero: controllers/profileController.js (Versión India - MODIFICADO)
+const { User, TrustedDevice, FavoriteActivity } = require('../database'); // <-- ¡Importar FavoriteActivity!
 const bcrypt = require('bcrypt');
 const { logDebug } = require('../utils/logger');
 
@@ -11,7 +11,7 @@ const { encrypt, decrypt } = require('../utils/encryption');
 
 /**
  * GET /profile
- * Muestra la página de edición de perfil.
+ * Muestra la página de edición de perfil. (Sin cambios)
  */
 exports.showProfile = (req, res) => {
   res.render('profile/edit', {
@@ -97,101 +97,55 @@ exports.updatePassword = async (req, res) => {
 };
 
 
-// --- Funciones de MFA ---
+// --- Funciones de MFA (Sin cambios) ---
 
-/**
- * POST /profile/mfa/generate (MODIFICADO)
- * Genera un nuevo secreto de MFA y devuelve el QR code Y la clave base32.
- */
 exports.generateMfaSecret = async (req, res) => {
+  // ... (Lógica de generateMfaSecret)
   try {
     const userEmail = res.locals.user.bookingEmail || res.locals.user.username;
     const appName = 'GYMSLIM';
-
-    // 1. Generar el secreto
-    const secret = speakeasy.generateSecret({
-      name: `${appName} (${userEmail})`,
-      issuer: appName
-    });
-
-    // 2. Guardar el secreto (base32) temporalmente en la sesión
+    const secret = speakeasy.generateSecret({ name: `${appName} (${userEmail})`, issuer: appName });
     req.session.mfaTempSecret = secret.base32;
     logDebug(3, `[MFA] Secreto temporal (base32) generado para ${userEmail}`);
-
-    // 3. Generar el QR code como Data URL
     const qrCodeDataUrl = await qrcode.toDataURL(secret.otpauth_url);
-
-    // 4. Enviar el QR code Y el secreto base32 al cliente (JSON)
-    res.json({ 
-      qrCodeDataUrl: qrCodeDataUrl,
-      base32Secret: secret.base32 // <-- ¡AÑADIDO!
-    });
-
+    res.json({ qrCodeDataUrl: qrCodeDataUrl, base32Secret: secret.base32 });
   } catch (error) {
     logDebug(1, '[MFA] Error al generar QR:', error.message);
     res.status(500).json({ message: 'Error al generar el código QR.' });
   }
 };
 
-
-/**
- * POST /profile/mfa/verify (Sin cambios)
- */
 exports.verifyAndEnableMfa = async (req, res) => {
+  // ... (Lógica de verifyAndEnableMfa)
   const { token } = req.body;
   const userId = req.session.userId;
   const tempSecret = req.session.mfaTempSecret;
 
   try {
-    if (!tempSecret) {
-      throw new Error('No se ha generado ningún secreto de MFA. Por favor, inténtelo de nuevo.');
-    }
-
-    const isVerified = speakeasy.totp.verify({
-      secret: tempSecret,
-      encoding: 'base32',
-      token: token,
-      window: 1
-    });
-
-    if (!isVerified) {
-      logDebug(1, `[MFA] Verificación fallida para ${userId}. Token: ${token}`);
-      throw new Error('El código no es válido. Asegúrese de que el reloj de su dispositivo esté sincronizado.');
-    }
-
+    if (!tempSecret) throw new Error('No se ha generado ningún secreto de MFA. Por favor, inténtelo de nuevo.');
+    const isVerified = speakeasy.totp.verify({ secret: tempSecret, encoding: 'base32', token: token, window: 1 });
+    if (!isVerified) throw new Error('El código no es válido. Asegúrese de que el reloj de su dispositivo esté sincronizado.');
+    
     const encryptedSecret = encrypt(tempSecret);
-    if (!encryptedSecret) {
-      throw new Error('Error crítico: No se pudo encriptar el secreto de MFA.');
-    }
+    if (!encryptedSecret) throw new Error('Error crítico: No se pudo encriptar el secreto de MFA.');
 
-    await User.update({
-      mfaEnabled: true,
-      mfaSecret: encryptedSecret,
-      mustConfigureMfa: false
-    }, {
-      where: { id: userId }
-    });
+    await User.update({ mfaEnabled: true, mfaSecret: encryptedSecret, mustConfigureMfa: false }, { where: { id: userId } });
 
     req.session.user.mfaEnabled = true;
     req.session.user.mustConfigureMfa = false;
-
     delete req.session.mfaTempSecret;
     logDebug(2, `[MFA] MFA activado exitosamente (y desbloqueado) para ${userId}`);
 
     res.json({ message: '¡MFA activado con éxito!' });
 
-  } catch (error)
-    {
+  } catch (error) {
     logDebug(1, `[MFA] Error al verificar MFA para ${userId}:`, error.message);
     res.status(400).json({ message: error.message });
   }
 };
 
-
-/**
- * POST /profile/mfa/disable (Sin cambios)
- */
 exports.disableMfa = async (req, res) => {
+  // ... (Lógica de disableMfa)
   const { password } = req.body;
   const userId = req.session.userId;
 
@@ -199,28 +153,86 @@ exports.disableMfa = async (req, res) => {
     const user = await User.findByPk(userId);
     const isMatch = await bcrypt.compare(password, user.passwordHash);
 
-    if (!isMatch) {
-      logDebug(1, `[MFA] Desactivación fallida (pass incorrecta) para ${userId}`);
-      throw new Error('La contraseña actual es incorrecta.');
-    }
+    if (!isMatch) throw new Error('La contraseña actual es incorrecta.');
 
-    await User.update({
-      mfaEnabled: false,
-      mfaSecret: null
-    }, {
-      where: { id: userId }
-    });
-
-    await TrustedDevice.destroy({
-      where: { userId: userId }
-    });
+    await User.update({ mfaEnabled: false, mfaSecret: null }, { where: { id: userId } });
+    await TrustedDevice.destroy({ where: { userId: userId } });
 
     logDebug(2, `[MFA] MFA desactivado (y dispositivos borrados) para ${userId}`);
-
     res.json({ message: 'MFA desactivado con éxito.' });
 
   } catch (error) {
     logDebug(1, `[MFA] Error al desactivar MFA para ${userId}:`, error.message);
     res.status(400).json({ message: error.message });
   }
+};
+
+// --- ¡NUEVAS FUNCIONES! Gestión de Favoritas (Versión India) ---
+
+/**
+ * GET /profile/favorites
+ * Muestra la lista maestra de actividades guardadas por el usuario.
+ */
+exports.showFavoriteActivities = async (req, res) => {
+    const userId = req.session.userId;
+    try {
+        const favoriteActivities = await FavoriteActivity.findAll({
+            where: { userId: userId },
+            attributes: ['activityName'],
+            order: [['activityName', 'ASC']]
+        });
+        
+        // Convertimos el array de objetos en un array simple de strings
+        const favorites = favoriteActivities.map(fa => fa.activityName);
+
+        res.render('profile/favorites', {
+            favorites: favorites,
+            message: req.query.message || null,
+            error: req.query.error || null,
+        });
+
+    } catch (error) {
+        logDebug(1, `[Favorites] Error al listar favoritas para ${userId}:`, error.message);
+        res.status(500).send('Error al cargar actividades favoritas.');
+    }
+};
+
+/**
+ * POST /profile/favorites
+ * Añade o elimina una actividad de la lista de favoritos del usuario.
+ * Esta ruta es llamada por el botón de la página /list.
+ */
+exports.updateFavoriteActivity = async (req, res) => {
+    const { activityName, action } = req.body;
+    const userId = req.session.userId;
+
+    if (!activityName || !action) {
+        return res.status(400).json({ message: 'Parámetros faltantes.' });
+    }
+
+    try {
+        if (action === 'add') {
+            // Añadir la actividad solo si no existe ya (para evitar duplicados)
+            await FavoriteActivity.findOrCreate({
+                where: { userId: userId, activityName: activityName },
+                defaults: { userId: userId, activityName: activityName }
+            });
+            logDebug(3, `[Favorites] Añadida actividad: ${activityName} para ${userId}`);
+            return res.json({ message: 'Añadida a favoritos', added: true });
+
+        } else if (action === 'remove') {
+            // Eliminar la actividad
+            await FavoriteActivity.destroy({
+                where: { userId: userId, activityName: activityName }
+            });
+            logDebug(3, `[Favorites] Eliminada actividad: ${activityName} para ${userId}`);
+            return res.json({ message: 'Eliminada de favoritos', removed: true });
+        }
+
+        return res.status(400).json({ message: 'Acción no válida.' });
+
+    } catch (error) {
+        logDebug(1, `[Favorites] Error al actualizar favoritas para ${userId}:`, error.message);
+        return res.status(500).json({ message: 'Error interno al procesar la solicitud.' });
+    }
 };

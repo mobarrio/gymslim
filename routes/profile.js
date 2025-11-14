@@ -1,4 +1,4 @@
-// Fichero: routes/profile.js (Versión Foxtrot - Parte 2)
+// Fichero: routes/profile.js (Versión India)
 const express = require('express');
 const router = express.Router();
 const profileController = require('../controllers/profileController');
@@ -12,15 +12,17 @@ router.get('/', profileController.showProfile);
 router.post('/details', profileController.updateDetails);
 router.post('/password', profileController.updatePassword);
 
-// --- ¡NUEVO! Rutas de MFA (Foxtrot) ---
-// 1. Genera el secreto y el QR code (se envía como JSON)
+// --- Rutas de MFA (Existente) ---
 router.post('/mfa/generate', profileController.generateMfaSecret);
-
-// 2. Verifica el token y activa el MFA
 router.post('/mfa/verify', profileController.verifyAndEnableMfa);
-
-// 3. Desactiva el MFA (requiere contraseña)
 router.post('/mfa/disable', profileController.disableMfa);
-// --- FIN NUEVO ---
+
+// --- ¡NUEVAS RUTAS! Gestión de Favoritas (Versión India) ---
+
+// GET /profile/favorites - Mostrar la lista maestra de actividades (gestión)
+router.get('/favorites', profileController.showFavoriteActivities);
+
+// POST /profile/favorites - Añadir o eliminar una actividad de la lista del usuario
+router.post('/favorites', profileController.updateFavoriteActivity);
 
 module.exports = router;

@@ -1,4 +1,4 @@
-// Fichero: routes/app.js (Versión Hotel)
+// Fichero: routes/app.js (Versión Kilo - MODIFICADO)
 const express = require('express');
 const router = express.Router();
 const appController = require('../controllers/appController');
@@ -14,7 +14,8 @@ router.use(checkForceMfaSetup);
 
 // GET / - Redirigir al horario
 router.get('/', (req, res) => {
-  res.redirect('/list?range_key=today');
+  // --- ¡CAMBIO CRÍTICO! Favoritas por defecto ---
+  res.redirect('/list?filter=favorites&range_key=today');
 });
 
 // GET /horario - Mostrar selector de fechas

@@ -1,7 +1,7 @@
-// Fichero: database.js (Versión Hotel - CORRECCIÓN DE SINCRONIZACIÓN FINAL)
+// Fichero: database.js (Versión India - CORRECCIÓN DE ARRANQUE)
 const { Sequelize, DataTypes } = require('sequelize');
 const bcrypt = require('bcrypt');
-const { logDebug } = require('./utils/logger'); 
+const { logDebug } = require('./utils/logger');
 const session = require('express-session');
 const SequelizeStore = require('connect-session-sequelize')(session.Store);
 
@@ -11,7 +11,7 @@ const sequelize = new Sequelize({
   logging: (msg) => logDebug(4, '[DB]', msg)
 });
 
-// --- Definición de Modelos (Sin cambios en las definiciones) ---
+// --- Definición de Modelos (Mismo Código) ---
 
 const User = sequelize.define('User', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
@@ -54,33 +54,54 @@ const Setting = sequelize.define('Setting', {
   timestamps: false 
 });
 
+const FavoriteActivity = sequelize.define('FavoriteActivity', {
+    id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    userId: { type: DataTypes.INTEGER, allowNull: false, references: { model: User, key: 'id' } },
+    activityName: { type: DataTypes.STRING, allowNull: false }
+});
+
 // --- Relaciones ---
 User.hasMany(TrustedDevice, { foreignKey: 'userId', onDelete: 'CASCADE' });
 TrustedDevice.belongsTo(User, { foreignKey: 'userId' });
+User.hasMany(FavoriteActivity, { foreignKey: 'userId', onDelete: 'CASCADE' });
+FavoriteActivity.belongsTo(User, { foreignKey: 'userId' });
 
 
 // --- Sincronización (Modificada) ---
+
+/**
+ * Función que maneja la inicialización de la base de datos en dos etapas.
+ */
 const initDatabase = async () => {
   
-  // 1. Verificar si la base de datos ya tiene el flag de sincronización inicial
+  // ETAPA 1: SINCRONIZACIÓN CRÍTICA (Necesaria antes de leer CUALQUIER Setting)
+  // Sincronizamos Setting (y User/Session/etc.) sin { alter: true } en el primer paso
+  // para que la tabla Setting exista y podamos leer el flag.
+  await Setting.sync({ alter: true });
+  await User.sync({ alter: true }); 
+  await Session.sync({ alter: true }); 
+  
+  // ETAPA 2: LÓGICA DE CONTROL DE ALTERACIÓN
   const syncStatus = await Setting.findOne({ where: { key: 'initial_sync_complete' } });
   
-  const syncOptions = { alter: !syncStatus }; // Usar alter: true solo si syncStatus es nulo (primera vez)
+  // Usar alter: true solo si syncStatus es nulo (primera vez).
+  // La opción `alter` ya se ha hecho en la primera etapa, pero la repetimos
+  // para las tablas que no son críticas para la lectura de settings.
+  const syncOptions = { alter: !syncStatus }; 
   
   if (!syncStatus) {
-      logDebug(1, 'EJECUCIÓN INICIAL: Usando ALTER: TRUE para crear todas las columnas...');
+      logDebug(1, 'EJECUCIÓN INICIAL: Creando estructura completa.');
   } else {
-      logDebug(1, 'EJECUCIÓN NORMAL: Usando SINCRONIZACIÓN SEGURA (alter: false) para verificar estructura.');
+      logDebug(1, 'EJECUCIÓN NORMAL: Verificando estructura.');
   }
 
-  // 2. Sincronizamos todos los modelos con las opciones condicionales
-  await User.sync(syncOptions); 
-  await ApiCache.sync(syncOptions);
-  await Session.sync(syncOptions);
+  // 3. Sincronizamos el resto de las tablas y las que ya sincronizamos
+  // (La operación `sync` de Sequelize es más segura si se llama sobre una tabla existente)
   await TrustedDevice.sync(syncOptions);
-  await Setting.sync(syncOptions); 
-  
-  // 3. Si era la primera vez, guardamos el flag para que no se repita
+  await ApiCache.sync(syncOptions);
+  await FavoriteActivity.sync(syncOptions); 
+
+  // 4. Si era la primera vez, guardamos el flag para que no se repita (y se apague el alter:true)
   if (!syncStatus) {
       await Setting.create({ key: 'initial_sync_complete', value: 'true' });
       logDebug(1, 'Flag "initial_sync_complete" guardado en la BDD.');
@@ -121,5 +142,6 @@ module.exports = {
   ApiCache,
   Session,
   TrustedDevice,
-  Setting
+  Setting,
+  FavoriteActivity
 };
