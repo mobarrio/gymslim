@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Seleccionar Fecha</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style> body { padding-top: 50px; } </style> <!-- Espacio para el nav fijo -->
+</head>
+<body>
+    <%- include('partials/_nav') %>
+
+    <div class="horario-container">
+        <form action="/list" method="GET" class="form-container">
+            <h2>Ver Horario de Clases</h2>
+            <% if (locals.error) { %>
+                <div class="error-msg"><%= error %></div>
+            <% } %>
+            <div>
+                <label for="start">Fecha Inicio:</label>
+                <input type="date" id="start" name="start" min="<%= today %>" value="<%= today %>" required>
+            </div>
+            <div>
+                <label for="end">Fecha Fin:</label>
+                <input type="date" id="end" name="end" min="<%= today %>" required>
+            </div>
+            <div class="refresh-div">
+                <input type="checkbox" id="refresh" name="refresh" value="true">
+                <label for="refresh">Forzar actualización de datos</label>
+            </div>
+            <button type="submit" class="btn-primary">Ver Clases</button>
+        </form>
+    </div>
+</body>
+</html>

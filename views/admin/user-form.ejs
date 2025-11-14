@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= user ? 'Editar' : 'Crear' %> Usuario</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style> body { padding-top: 50px; } .container { max-width: 500px; }</style>
+</head>
+<body>
+    <%- include('../partials/_nav') %>
+
+    <div class="container">
+        <form method="POST" class="form-container">
+            <h2><%= user ? 'Editar' : 'Crear' %> Usuario</h2>
+            
+            <% if (locals.error) { %><div class="error-msg"><%= error %></div><% } %>
+
+            <div>
+                <label for="username">Nombre de Usuario:</label>
+                <input type="text" id="username" name="username" value="<%= user ? user.username : '' %>" required>
+            </div>
+            
+            <% if (!user) { %>
+                <!-- Solo mostrar campo de contraseña al crear -->
+                <div>
+                    <label for="password">Contraseña:</label>
+                    <input type="password" id="password" name="password" required>
+                    <small>El usuario deberá cambiarla en su primer login.</small>
+                </div>
+            <% } else { %>
+                <p><small>Para resetear la contraseña, usa el botón en la lista de usuarios.</small></p>
+            <% } %>
+
+            <div class="refresh-div">
+                <input type="checkbox" id="isAdmin" name="isAdmin" <%= (user && user.isAdmin) ? 'checked' : '' %>>
+                <label for="isAdmin">Es Administrador</label>
+            </div>
+
+            <button type="submit" class="btn-primary" style="margin-top: 20px;">Guardar Cambios</button>
+            <a href="/admin/users" style="display: block; text-align: center; margin-top: 15px;">Cancelar</a>
+        </form>
+    </div>
+</body>
+</html>

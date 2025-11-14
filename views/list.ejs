@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GYMSLIM - Horario de Clases</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style> body { padding-top: 50px; } </style> <!-- Espacio para el nav fijo -->
+</head>
+<body>
+    
+    <%- include('partials/_nav') %>
+
+    <!-- Modal para Avatares -->
+    <div id="imageModal">
+        <img id="modalImage" src="" alt="Avatar Ampliado">
+    </div>
+
+    <!-- Toast de Notificación -->
+    <div id="notification-toast" class="hidden">
+        <span id="notification-message"></span>
+    </div>
+
+    <div class="container">
+        <!-- 
+          ¡Eliminada la cabecera estática de la vAlfa! 
+          El _nav la reemplaza.
+        -->
+        <h2>Clases de <%= startDate %> a <%= endDate %></h2>
+
+        <!-- Filtro de Actividad -->
+        <form id="filterForm" action="/list" method="GET">
+            <label for="activity_filter">Filtrar por Actividad:</label>
+            <select id="activity_filter" name="activity" onchange="this.form.submit()">
+                <option value="todas" <%= selectedActivity === 'todas' ? 'selected' : '' %>>Todas</option>
+                <% allActivityNames.forEach(name => { %>
+                    <option value="<%= name %>" <%= selectedActivity === name ? 'selected' : '' %>>
+                        <%= name %>
+                    </option>
+                <% }) %>
+            </select>
+            <input type="hidden" name="start" value="<%= startDate %>">
+            <input type="hidden" name="end" value="<%= endDate %>">
+        </form>
+
+        <!-- Mensaje si no hay clases -->
+        <% if (!events || events.length === 0) { %>
+            <hr>
+            <p>
+                <% if (startDate === endDate) { %>
+                    No hay más clases programadas para hoy (<%= startDate %>).
+                <% } else { %>
+                    No hay clases futuras programadas entre <%= startDate %> y <%= endDate %>.
+                <% } %>
+            </p>
+        <% } else { %>
+            <!-- Tabla de Clases -->
+            <table>
+                <tr>
+                    <th class="col-clase">Clase</th>
+                    <th class="col-fecha">Fecha</th>
+                    <th class="col-plazas">Plazas</th>
+                    <th class="col-sesion">Sesión</th>
+                </tr>
+
+                <% events.forEach(event => { %>
+                    <%
+                        // 'helpers' se pasa desde el controlador appController
+                        const instructor = helpers.obtenerInstructor(event);
+                        const avatar = helpers.obtenerAvatar(event);
+                        const plazas = helpers.formatearPlazas(event.booking_info.places);
+                        const fecha = helpers.formatearFecha(event.mobile);
+                        const id = event.session_id;
+                        const roomName = event.room || 'N/A';
+                    %>
+                    <tr>
+                        <td>
+                            <div class="clase-info">
+                                <img src="<%= avatar %>" class="clase-avatar zoomable-avatar" alt="Avatar">
+                                <div class="clase-details">
+                                    <span class="clase-title"><%= event.title || 'N/A' %></span>
+                                    <span class="clase-subtitle">
+                                        <%= roomName %> 
+                                        <%= (instructor && instructor !== 'Gimnasio' && instructor !== 'N/A') ? '- ' + instructor : '' %>
+                                    </span>
+                                 </div>
+                            </div>
+                        </td>
+                        <td><%= fecha %></td>
+                        <td><%= plazas %></td>
+                        <td>
+                            <!-- Botón de Reserva (vBeta) -->
+                            <button class="sesion-link btn-reservar" 
+                                    data-session-id="<%= id %>" 
+                                    data-room-name="<%= roomName %>">
+                                Reservar <%= id %>
+                            </button>
+                        </td>
+                    </tr>
+                <% }) %>
+            </table>
+        <% } %>
+    </div>
+
+    <script src="/js/main.js"></script>
+</body>
+</html>

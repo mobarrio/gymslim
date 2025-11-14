@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Usuarios</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style> body { padding-top: 50px; } .container { max-width: 1100px; }</style>
+</head>
+<body>
+    <%- include('../partials/_nav') %>
+
+    <div class="container">
+        <h1>Gestión de Usuarios</h1>
+        <p>
+            <a href="/admin/users/new" class="btn-primary" style="text-decoration: none;">+ Crear Nuevo Usuario</a>
+            <a href="/admin/emails" style="margin-left: 20px;">Gestionar Emails de Reserva</a>
+        </p>
+        
+        <% if (locals.message) { %>
+            <div class="info-msg"><%= message %></div>
+        <% } %>
+
+        <table>
+            <tr>
+                <th>ID</th>
+                <th>Usuario</th>
+                <th>Admin</th>
+                <th>Debe Cambiar Pass</th>
+                <th style="width: 250px;">Acciones</th>
+            </tr>
+            <% users.forEach(u => { %>
+                <tr>
+                    <td><%= u.id %></td>
+                    <td><%= u.username %></td>
+                    <td><%= u.isAdmin ? 'Sí' : 'No' %></td>
+                    <td><%= u.mustChangePassword ? 'Sí' : 'No' %></td>
+                    <td>
+                        <a href="/admin/users/<%= u.id %>/edit" style="margin-right: 10px;">Editar</a>
+                        <form action="/admin/users/<%= u.id %>/reset-pass" method="POST" style="display: inline-block; margin-right: 10px;">
+                            <button type="submit" class="sesion-link" onclick="return confirm('¿Resetear contraseña de <%= u.username %> a (password123)?')">Reset Pass</button>
+                        </form>
+                        <% if (user.id !== u.id) { %> <!-- No borrarse a sí mismo -->
+                            <form action="/admin/users/<%= u.id %>/delete" method="POST" style="display: inline-block;">
+                                <button type="submit" class="sesion-link" style="color: #dc3545;" onclick="return confirm('¿ELIMINAR a <%= u.username %>?')">Eliminar</button>
+                            </form>
+                        <% } %>
+                    </td>
+                </tr>
+            <% }) %>
+        </table>
+    </div>
+</body>
+</html>

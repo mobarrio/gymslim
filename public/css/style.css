@@ -1,0 +1,160 @@
+/* Estilos Globales */
+body { 
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+    margin: 20px; 
+    color: #333; 
+    background-color: #f4f7f6; 
+}
+.container { max-width: 950px; margin: 20px auto; }
+hr { border: none; border-top: 1px solid #eee; }
+
+/* Formularios (Login, Horario, etc.) */
+.form-container {
+    background: #fff; 
+    border: 1px solid #ccc; 
+    padding: 30px; 
+    border-radius: 8px; 
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+.form-container div { margin-bottom: 15px; }
+.form-container label { display: block; margin-bottom: 5px; font-weight: bold; }
+.form-container input[type="text"],
+.form-container input[type="password"],
+.form-container input[type="date"] { 
+    width: 100%;
+    padding: 10px; 
+    font-size: 16px; 
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    box-sizing: border-box; /* Importante */
+}
+.btn-primary { 
+    width: 100%; 
+    padding: 12px; 
+    font-size: 16px; 
+    background-color: #007bff; 
+    color: white; 
+    border: none; 
+    border-radius: 5px; 
+    cursor: pointer; 
+}
+.error-msg {
+    background: #ffebeB;
+    border: 1px solid #ffcccc;
+    color: #a00;
+    padding: 10px;
+    border-radius: 4px;
+    margin-bottom: 15px;
+}
+.info-msg {
+    background: #fffbe6; 
+    border: 1px solid #ffe58f; 
+    padding: 10px; 
+    border-radius: 4px;
+    font-size: 14px;
+}
+.refresh-div { 
+    font-size: 14px; 
+    margin-top: 20px; 
+    display: flex; 
+    align-items: center; 
+}
+.refresh-div input { width: auto; margin-right: 8px; }
+.refresh-div label { display: inline-block; font-weight: normal; margin-bottom: 0; }
+
+
+/* Navegación de Usuario */
+.user-nav { font-size: 14px; }
+.user-nav a { color: #007bff; text-decoration: none; margin-left: 15px; }
+.user-nav.top-right { position: absolute; top: 20px; right: 25px; }
+
+
+/* Página de Lista (/list) */
+.header { display: flex; justify-content: space-between; align-items: center; }
+h1 { font-weight: 400; color: #555; border-bottom: 1px solid #ddd; padding-bottom: 10px; font-size: 24px; }
+
+#filterForm { margin: 20px 0; }
+#filterForm label { font-weight: bold; margin-right: 10px; }
+#filterForm select { padding: 8px; font-size: 14px; border-radius: 5px; border: 1px solid #ccc; }
+
+table { border-collapse: collapse; width: 100%; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); background-color: #fff; border-radius: 8px; overflow: hidden; }
+th, td { padding: 14px 12px; text-align: left; vertical-align: middle; border-bottom: 1px solid #f0f0f0; }
+tr:last-child td { border-bottom: none; }
+th { background-color: #f9f9f9; color: #555; font-weight: 600; font-size: 12px; text-transform: uppercase; }
+
+.col-clase { width: 45%; } .col-fecha { width: 20%; } .col-plazas { width: 15%; } .col-sesion { width: 20%; }
+
+.clase-info { display: flex; align-items: center; }
+.clase-avatar { 
+    width: 40px; height: 40px; border-radius: 50%; margin-right: 12px; 
+    object-fit: cover; border: 1px solid #eee; cursor: zoom-in;
+}
+.clase-details { display: flex; flex-direction: column; }
+.clase-title { font-weight: 600; font-size: 15px; color: #222; }
+.clase-subtitle { color: #777; font-size: 13px; margin-top: 2px; }
+.sesion-link { color: #007bff; text-decoration: none; font-weight: 600; font-size: 13px; }
+
+/* Modal de Imagen */
+#imageModal {
+    display: none; position: fixed; z-index: 1000;
+    left: 0; top: 0; width: 100%; height: 100%;
+    overflow: auto; background-color: rgba(0,0,0,0.85);
+    justify-content: center; align-items: center;
+    transition: opacity 0.2s ease;
+}
+#modalImage {
+    margin: auto; display: block;
+    max-width: 80%; max-height: 80%;
+    border-radius: 5px;
+}
+#imageModal:hover { cursor: zoom-out; }
+/* ... (Todos tus estilos anteriores) ... */
+
+/* ¡NUEVO! Estilo para el botón de reserva (para que parezca un enlace) */
+.btn-reservar {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    cursor: pointer;
+    color: #007bff; /* Mismo color que .sesion-link */
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 13px;
+}
+.btn-reservar:hover {
+    text-decoration: underline;
+}
+.btn-reservar:disabled {
+    color: #999;
+    cursor: not-allowed;
+    text-decoration: none;
+}
+
+
+/* ¡NUEVO! Estilos para el Toast de Notificación */
+#notification-toast {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 12px 20px;
+    border-radius: 8px;
+    background-color: #28a745; /* Verde éxito */
+    color: white;
+    font-size: 16px;
+    font-weight: 500;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 2000;
+    transition: top 0.3s ease-out, opacity 0.3s ease-out;
+    opacity: 1;
+}
+
+#notification-toast.error {
+    background-color: #dc3545; /* Rojo error */
+}
+
+#notification-toast.hidden {
+    top: -100px;
+    opacity: 0;
+}
