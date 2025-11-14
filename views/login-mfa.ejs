@@ -54,7 +54,11 @@
 
         <div>
             <input type="checkbox" id="trustDevice" name="trustDevice" value="true">
-            <label for="trustDevice" class="label-inline">Confiar en este dispositivo (30 días)</label>
+            <!-- --- ¡CORRECCIÓN AÑADIDA AQUÍ! --- -->
+            <label for="trustDevice" class="label-inline">
+                Confiar en este dispositivo (<%= trustedDeviceDays %> días)
+            </label>
+            <!-- --- FIN CORRECCIÓN --- -->
         </div>
 
         <button type="submit" class="btn-primary">Verificar e Iniciar Sesión</button>

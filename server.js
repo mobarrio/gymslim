@@ -1,25 +1,23 @@
-// Fichero: server.js (Versión Hotel - MODIFICADO)
+// Fichero: server.js (Versión Hotel - FINAL)
 require('dotenv').config(); // Cargar .env primero
 const express = require('express');
 const session = require('express-session');
 const path = require('path');
 const cookieParser = require('cookie-parser');
 
-// Importamos 'Session' ADEMÁS de los otros
 const { sequelize, initDatabase, User, Session } = require('./database'); 
-const { logDebug, DEBUG_LEVEL } = require('./utils/logger'); // Importar logger
+const { logDebug, DEBUG_LEVEL } = require('./utils/logger'); 
 const SequelizeStore = require('connect-session-sequelize')(session.Store);
 
-// Importar el cargador de caché (Versión Golf)
-const { loadSettings } = require('./utils/settingsCache');
+const { loadSettings, getSetting } = require('./utils/settingsCache');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// --- Configuración de Express ---
+// --- Configuración de Express y Middleware de Sesión ---
 app.use(express.json()); 
 app.use(express.urlencoded({ extended: true })); 
-app.use(cookieParser()); // (Versión Foxtrot)
+app.use(cookieParser());
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -27,10 +25,11 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Configuración de Sesión
 const sessionStore = new SequelizeStore({
   db: sequelize,
-  model: Session, // (Corrección de arranque)
+  model: Session, 
   table: 'Session'
 });
 
+// 1. INICIALIZAR EL MIDDLEWARE DE SESIÓN
 app.use(session({
   secret: process.env.SESSION_SECRET,
   store: sessionStore,
@@ -42,16 +41,20 @@ app.use(session({
   }
 }));
 
-// --- Middleware Global (MODIFICADO) ---
+// 2. MIDDLEWARE GLOBAL (Se ejecuta después de session)
 app.use(async (req, res, next) => {
   res.locals.DEBUG_LEVEL = DEBUG_LEVEL;
+  
+  // Pasa la configuración global de la caché a las vistas
+  res.locals.trustedDeviceDays = getSetting('trusted_device_days', '30'); 
+
   if (!req.session.userId) {
     return next();
   }
+
   try {
     const user = await User.findByPk(req.session.userId);
     if (user) {
-      // Poner datos clave a disposición de todas las vistas (EJS)
       res.locals.user = {
         id: user.id,
         username: user.username,
@@ -59,15 +62,12 @@ app.use(async (req, res, next) => {
         bookingEmail: user.bookingEmail, 
         isAdmin: user.isAdmin,
         mfaEnabled: user.mfaEnabled,
-        mustConfigureMfa: user.mustConfigureMfa // <-- ¡CAMBIO AÑADIDO!
+        mustConfigureMfa: user.mustConfigureMfa
       };
       
       res.locals.activeBookingEmail = user.bookingEmail; 
       req.session.mustChangePassword = user.mustChangePassword;
-      
-      // Actualizar datos de sesión
-      req.session.user = res.locals.user; // <-- El objeto user ya incluye el nuevo flag
-      
+      req.session.user = res.locals.user;
       logDebug(4, `[Session] Usuario ${user.username} cargado en res.locals`);
     } else {
       logDebug(2, `[Session] ID de sesión ${req.session.userId} no encontrado en BDD. Limpiando sesión.`);
@@ -99,16 +99,12 @@ app.all('*', (req, res) => {
   res.status(404).send('Ruta no encontrada');
 });
 
-// --- Iniciar Servidor (Corrección Definitiva) ---
+// --- Iniciar Servidor ---
 const startServer = async () => {
   try {
-    // 1. Sincroniza BDD (User, ApiCache, Session, TrustedDevice, Setting)
     await initDatabase(); 
-
-    // 2. Carga la configuración (ej. '30' días) en la memoria
-    await loadSettings();
+    await loadSettings(); 
     
-    // 3. Iniciar el servidor
     app.listen(PORT, () => {
       logDebug(1, `Servidor iniciado. Escuchando en http://localhost:${PORT}`);
       if (DEBUG_LEVEL > 0) {

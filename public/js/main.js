@@ -1,4 +1,23 @@
-// Fichero: /public/js/main.js (Versión Foxtrot - CORREGIDO)
+// Fichero: /public/js/main.js (Versión Foxtrot - FINAL)
+
+// --- Lógica del Menú de Navegación (Ejecución Inmediata para Consistencia) ---
+// Se ejecuta inmediatamente para adjuntar eventos al menú de navegación antes de cualquier otro script.
+(function attachNavEvents() {
+    const navDateSelect = document.getElementById('nav-date-select');
+    const navDateForm = document.getElementById('nav-date-form');
+    
+    if (navDateSelect && navDateForm) {
+      navDateSelect.addEventListener('change', function() {
+        if (this.value === 'custom') {
+          // Si elige 'custom', redirigir a la página de horario
+          window.location.href = '/horario';
+        } else {
+          // Para cualquier otra opción, enviar el formulario
+          navDateForm.submit();
+        }
+      });
+    }
+})(); // Se llama inmediatamente
 
 document.addEventListener('DOMContentLoaded', () => {
     
@@ -19,22 +38,6 @@ document.addEventListener('DOMContentLoaded', () => {
             modal.style.display = 'none';
         });
     }
-
-    // --- Lógica para el selector de fecha del Nav (Existente) ---
-    const navDateSelect = document.getElementById('nav-date-select');
-    const navDateForm = document.getElementById('nav-date-form');
-    
-    if (navDateSelect && navDateForm) {
-      navDateSelect.addEventListener('change', function() {
-        if (this.value === 'custom') {
-          // Si elige 'custom', redirigir a la página de horario
-          window.location.href = '/horario';
-        } else {
-          // Para cualquier otra opción, enviar el formulario
-          navDateForm.submit();
-        }
-      });
-    }
     
     // --- Lógica de Notificación (Toast) (Existente) ---
     const toastElement = document.getElementById('notification-toast');
@@ -43,10 +46,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     /**
      * Muestra una notificación (toast)
-     * @param {string} message - El mensaje a mostrar.
-     * @param {boolean} [isError=false] - True si es un mensaje de error.
      */
-    function showNotification(message, isError = false) {
+    function showNotification(message, isError = false) { 
         if (toastTimeout) clearTimeout(toastTimeout);
         
         if (!toastElement || !messageElement) {
@@ -113,7 +114,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
 
-    // --- Lógica de MFA (MODIFICADA) ---
+    // --- Lógica de MFA (Versión Foxtrot) ---
     
     // Elementos del Modal
     const mfaModal = document.getElementById('mfa-modal');
@@ -128,6 +129,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const mfaVerifyButton = document.getElementById('mfa-verify-button');
     const mfaCancelButton = document.getElementById('mfa-cancel-button');
     const mfaErrorMessage = document.getElementById('mfa-error-message');
+    
+    // Nuevo elemento: Clave manual 
+    const mfaManualKeyDiv = document.getElementById('mfa-manual-key');
 
     // Elementos de Desactivación
     const mfaDisableButton = document.getElementById('mfa-disable-button');
@@ -137,10 +141,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const mfaCancelDisableButton = document.getElementById('mfa-cancel-disable-button');
     const mfaErrorMessageDisable = document.getElementById('mfa-error-message-disable');
 
-    // Función genérica para cerrar el modal
     function closeMfaModal() {
         if (mfaModal) {
             mfaModal.style.display = 'none';
+        }
+        // Limpiar el campo manual
+        if (mfaManualKeyDiv) {
+            mfaManualKeyDiv.textContent = '';
+            mfaManualKeyDiv.style.display = 'none';
         }
         // Limpiar campos y errores
         if (mfaTokenInput) mfaTokenInput.value = '';
@@ -149,23 +157,24 @@ document.addEventListener('DOMContentLoaded', () => {
         if (mfaErrorMessageDisable) mfaErrorMessageDisable.style.display = 'none';
     }
 
-    // 1. Flujo de Activación: Botón "Activar MFA"
+    // 1. Flujo de Activación: Botón "Activar MFA" 
     if (mfaEnableButton) {
         mfaEnableButton.addEventListener('click', async () => {
             if (!mfaModal || !mfaSetupContent || !mfaQrCodeDiv) return;
 
-            // Mostrar modal y contenido de activación
             mfaModal.style.display = 'flex';
             mfaSetupContent.style.display = 'block';
             mfaDisableContent.style.display = 'none';
             mfaErrorMessage.style.display = 'none';
             
-            // Mostrar estado de carga del QR
+            if (mfaManualKeyDiv) {
+                mfaManualKeyDiv.style.display = 'none';
+            }
+
             mfaQrCodeDiv.innerHTML = 'Generando código QR...';
-            mfaQrCodeDiv.className = 'loading'; // Mostrar 'Generando...'
+            mfaQrCodeDiv.className = 'loading';
             
             try {
-                // Llamar a la API para generar el secreto y el QR
                 const response = await fetch('/profile/mfa/generate', {
                     method: 'POST'
                 });
@@ -178,20 +187,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // Éxito: Mostrar el QR
                 mfaQrCodeDiv.innerHTML = `<img src="${result.qrCodeDataUrl}" alt="MFA QR Code">`;
-                
-                // --- ¡¡¡AQUÍ ESTÁ LA CORRECCIÓN!!! ---
-                // Cambiamos la clase a 'loaded' (visible) en lugar de '' (invisible)
                 mfaQrCodeDiv.className = 'loaded'; 
-                // --- FIN DE LA CORRECCIÓN ---
+
+                // Mostrar la clave manual
+                if (mfaManualKeyDiv && result.base32Secret) {
+                    mfaManualKeyDiv.textContent = result.base32Secret.match(/.{1,4}/g).join(' '); // Formatear
+                    mfaManualKeyDiv.style.display = 'block';
+                }
 
             } catch (error) {
                 mfaQrCodeDiv.innerHTML = `Error al cargar QR: ${error.message}`;
-                mfaQrCodeDiv.className = 'error'; // Podrías definir un estilo .error
+                mfaQrCodeDiv.className = 'error'; 
             }
         });
     }
 
-    // 2. Flujo de Activación: Botón "Verificar y Activar"
+    // 2. Flujo de Activación: Botón "Verificar y Activar" 
     if (mfaVerifyForm) {
         mfaVerifyForm.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -222,7 +233,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 // ¡Éxito!
                 closeMfaModal();
                 showNotification(result.message || '¡MFA activado!');
-                // Recargar la página para mostrar el estado "Activado"
                 window.location.reload();
 
             } catch (error) {
@@ -234,12 +244,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 3. Flujo de Desactivación: Botón "Desactivar MFA"
+    // 3. Flujo de Desactivación: Botón "Desactivar MFA" 
     if (mfaDisableButton) {
         mfaDisableButton.addEventListener('click', () => {
             if (!mfaModal || !mfaSetupContent || !mfaDisableContent) return;
 
-            // Mostrar modal y contenido de desactivación
             mfaModal.style.display = 'flex';
             mfaSetupContent.style.display = 'none';
             mfaDisableContent.style.display = 'block';
@@ -247,7 +256,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 4. Flujo de Desactivación: Botón "Desactivar" (Confirmación)
+    // 4. Flujo de Desactivación: Botón "Desactivar" (Confirmación) 
     if (mfaDisableForm) {
         mfaDisableForm.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -278,7 +287,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 // ¡Éxito!
                 closeMfaModal();
                 showNotification(result.message || '¡MFA desactivado!');
-                // Recargar la página para mostrar el estado "Desactivado"
                 window.location.reload();
 
             } catch (error) {
@@ -290,17 +298,16 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 5. Botones de Cancelar
+    // 5. Botones de Cancelar 
     if (mfaCancelButton) {
         mfaCancelButton.addEventListener('click', closeMfaModal);
     }
     if (mfaCancelDisableButton) {
         mfaCancelDisableButton.addEventListener('click', closeMfaModal);
     }
-    // Opcional: Cierra el modal si se hace clic fuera del contenido
     if (mfaModal) {
         mfaModal.addEventListener('click', (e) => {
-            if (e.target === mfaModal) { // Solo si se hace clic en el fondo oscuro
+            if (e.target === mfaModal) { 
                 closeMfaModal();
             }
         });

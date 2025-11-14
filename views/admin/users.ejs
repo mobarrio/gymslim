@@ -38,7 +38,7 @@
         form[action*="delete"], 
         form[action*="reset-pw"],
         form[action*="disable-mfa"],
-        form[action*="force-mfa"] { /* <- Añadido force-mfa */
+        form[action*="force-mfa"] { 
             display: inline-block;
             margin: 0;
         }
@@ -67,7 +67,7 @@
             <div class="success-msg"><%= message %></div>
         <% } %>
 
-        <!-- Tabla de Usuarios (MODIFICADA) -->
+        <!-- Tabla de Usuarios -->
         <table>
             <thead>
                 <tr>
@@ -98,7 +98,7 @@
                             <%= user.isAdmin ? 'Admin' : 'Usuario' %>
                         </td>
                         
-                        <!-- --- CELDA MFA MODIFICADA --- -->
+                        <!-- CELDA MFA MODIFICADA (Versión Hotel) -->
                         <td>
                             <% if (user.mustConfigureMfa) { %>
                                 <span style="color: #8c00b0; font-weight: bold;">Fuerza Setup</span>
@@ -108,7 +108,7 @@
                                 <span style="color: #6c757d;">No</span>
                             <% } %>
                         </td>
-                        <!-- --- FIN CELDA MFA MODIFICADA --- -->
+                        <!-- FIN CELDA MFA MODIFICADA -->
 
                         <td>
                             <div class="table-actions">
@@ -123,14 +123,13 @@
                                     <button type="submit" class="btn-small btn-reset">Reset Pass</button>
                                 </form>
                                 
-                                <!-- --- ¡NUEVO BOTÓN! --- -->
+                                <!-- Botón Forzar Setup MFA (Versión Hotel) -->
                                 <% if (user.id !== locals.user.id) { %>
                                     <form action="/admin/users/force-mfa/<%= user.id %>" method="POST" onsubmit="return confirm('¿Seguro que quieres FORZAR la configuración de MFA para <%= user.username %>? El usuario será bloqueado hasta que lo haga.');">
                                         <button type="submit" class="btn-small btn-mfa-force">Forzar Setup MFA</button>
                                     </form>
                                 <% } %>
-                                <!-- --- FIN NUEVO BOTÓN --- -->
-
+                                
 
                                 <!-- Botón Quitar MFA -->
                                 <% if (user.mfaEnabled && user.id !== locals.user.id) { %>
@@ -155,6 +154,7 @@
 
     </div>
     
+    <!-- Script necesario para que la barra de navegación funcione -->
     <script src="/js/main.js"></script>
     
 </body>

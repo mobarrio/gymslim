@@ -1,4 +1,4 @@
-// Fichero: utils/settingsCache.js (NUEVO)
+// Fichero: utils/settingsCache.js (CORRECCIÓN FINAL DE CONSISTENCIA)
 const { Setting } = require('../database');
 const { logDebug } = require('./logger');
 
@@ -7,7 +7,6 @@ let settingsCache = {};
 
 /**
  * Carga todas las configuraciones de la BDD a la caché en memoria.
- * Se llama al iniciar el servidor.
  */
 async function loadSettings() {
   try {
@@ -23,18 +22,24 @@ async function loadSettings() {
 }
 
 /**
- * Obtiene un valor de la caché.
+ * Obtiene un valor de la caché. Si no está, lo intenta buscar en la BDD
+ * (aunque el loadSettings debería haberlo hecho).
  * @param {string} key La clave de configuración (ej. 'trusted_device_days')
  * @param {string} defaultValue El valor a devolver si la clave no existe
  * @returns {string} El valor de la configuración
  */
 function getSetting(key, defaultValue) {
-  return settingsCache[key] || defaultValue;
+  // 1. Devolver de la caché si existe (el caso normal)
+  if (settingsCache[key]) {
+      return settingsCache[key];
+  }
+  
+  // 2. Si no existe, devuelve el valor por defecto
+  return defaultValue;
 }
 
 /**
  * Actualiza un valor en la BDD y luego en la caché.
- * Se llama desde el controlador de admin.
  */
 async function updateSetting(key, value) {
   try {

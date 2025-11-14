@@ -1,5 +1,5 @@
-// Fichero: controllers/profileController.js (Versión Hotel - MODIFICADO)
-const { User, TrustedDevice } = require('../database'); 
+// Fichero: controllers/profileController.js (MODIFICADO)
+const { User, TrustedDevice } = require('../database');
 const bcrypt = require('bcrypt');
 const { logDebug } = require('../utils/logger');
 
@@ -17,7 +17,7 @@ exports.showProfile = (req, res) => {
   res.render('profile/edit', {
     user: res.locals.user,
     mfaEnabled: res.locals.user.mfaEnabled,
-    mustConfigureMfa: res.locals.user.mustConfigureMfa, // <-- ¡CAMBIO AÑADIDO!
+    mustConfigureMfa: res.locals.user.mustConfigureMfa,
     message: req.query.message || null,
     error: req.query.error || null,
     detailsError: req.query.detailsError || null,
@@ -99,19 +99,34 @@ exports.updatePassword = async (req, res) => {
 
 // --- Funciones de MFA ---
 
+/**
+ * POST /profile/mfa/generate (MODIFICADO)
+ * Genera un nuevo secreto de MFA y devuelve el QR code Y la clave base32.
+ */
 exports.generateMfaSecret = async (req, res) => {
-  // ... (Lógica de generateMfaSecret sin cambios)
   try {
     const userEmail = res.locals.user.bookingEmail || res.locals.user.username;
-    const appName = 'GYMSLIM'; 
+    const appName = 'GYMSLIM';
+
+    // 1. Generar el secreto
     const secret = speakeasy.generateSecret({
-      name: `${appName} (${userEmail})`, 
+      name: `${appName} (${userEmail})`,
       issuer: appName
     });
+
+    // 2. Guardar el secreto (base32) temporalmente en la sesión
     req.session.mfaTempSecret = secret.base32;
     logDebug(3, `[MFA] Secreto temporal (base32) generado para ${userEmail}`);
+
+    // 3. Generar el QR code como Data URL
     const qrCodeDataUrl = await qrcode.toDataURL(secret.otpauth_url);
-    res.json({ qrCodeDataUrl: qrCodeDataUrl });
+
+    // 4. Enviar el QR code Y el secreto base32 al cliente (JSON)
+    res.json({ 
+      qrCodeDataUrl: qrCodeDataUrl,
+      base32Secret: secret.base32 // <-- ¡AÑADIDO!
+    });
+
   } catch (error) {
     logDebug(1, '[MFA] Error al generar QR:', error.message);
     res.status(500).json({ message: 'Error al generar el código QR.' });
@@ -120,8 +135,7 @@ exports.generateMfaSecret = async (req, res) => {
 
 
 /**
- * POST /profile/mfa/verify
- * Verifica el token de 6 dígitos y activa el MFA.
+ * POST /profile/mfa/verify (Sin cambios)
  */
 exports.verifyAndEnableMfa = async (req, res) => {
   const { token } = req.body;
@@ -137,7 +151,7 @@ exports.verifyAndEnableMfa = async (req, res) => {
       secret: tempSecret,
       encoding: 'base32',
       token: token,
-      window: 1 
+      window: 1
     });
 
     if (!isVerified) {
@@ -150,20 +164,17 @@ exports.verifyAndEnableMfa = async (req, res) => {
       throw new Error('Error crítico: No se pudo encriptar el secreto de MFA.');
     }
 
-    // 3. Actualizar el usuario en la BDD
     await User.update({
       mfaEnabled: true,
       mfaSecret: encryptedSecret,
-      mustConfigureMfa: false // <-- ¡CAMBIO CRUCIAL AÑADIDO! DESBLOQUEAR AL USUARIO
+      mustConfigureMfa: false
     }, {
       where: { id: userId }
     });
 
-    // 4. Actualizar la sesión (res.locals se actualiza con el middleware global)
     req.session.user.mfaEnabled = true;
     req.session.user.mustConfigureMfa = false;
 
-    // 5. Limpiar el secreto temporal de la sesión
     delete req.session.mfaTempSecret;
     logDebug(2, `[MFA] MFA activado exitosamente (y desbloqueado) para ${userId}`);
 
@@ -181,7 +192,6 @@ exports.verifyAndEnableMfa = async (req, res) => {
  * POST /profile/mfa/disable (Sin cambios)
  */
 exports.disableMfa = async (req, res) => {
-  // ... (Lógica de disableMfa sin cambios)
   const { password } = req.body;
   const userId = req.session.userId;
 

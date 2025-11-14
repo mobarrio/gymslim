@@ -1,4 +1,4 @@
-// Fichero: controllers/authController.js (Versión Golf - MODIFICADO)
+// Fichero: controllers/authController.js (CORRECCIÓN FINAL DE PERSISTENCIA)
 const { User, TrustedDevice } = require('../database');
 const bcrypt = require('bcrypt');
 const { logDebug } = require('../utils/logger');
@@ -6,16 +6,10 @@ const { decrypt } = require('../utils/encryption');
 const speakeasy = require('speakeasy');
 const crypto = require('crypto');
 
-// --- ¡NUEVO! Importar el caché de config ---
+// --- Importar el caché de config (Asegúrate de que este fichero exista) ---
 const { getSetting } = require('../utils/settingsCache');
-// --- FIN NUEVO ---
 
 const TRUSTED_COOKIE_NAME = 'trusted_device';
-
-// --- ¡ELIMINADO! ---
-// const TRUSTED_COOKIE_AGE = 30 * 24 * 60 * 60 * 1000; (Ya no está hardcodeado)
-// --- FIN ELIMINADO ---
-
 
 function completeLogin(req, res, user) {
   req.session.isLoggedIn = true;
@@ -37,12 +31,13 @@ async function createTrustedDevice(req, res, userId) {
   try {
     const token = crypto.randomBytes(32).toString('hex');
 
-    // --- ¡LÓGICA MODIFICADA! ---
-    // 1. Obtener los días desde la caché de configuración
-    const daysStr = getSetting('trusted_device_days', '30'); // Default 30
+    // --- ¡LÓGICA MODIFICADA! Ahora se asume que getSetting devuelve el valor correcto. ---
+    // 1. Obtener los días desde la caché de configuración.
+    // getSetting DEBE ser síncrono, si no el problema está en utils/settingsCache.js
+    const daysStr = getSetting('trusted_device_days', '30'); 
     const days = parseInt(daysStr, 10);
     
-    // 2. Calcular la expiración
+    // 2. Calcular la expiración en milisegundos y fecha
     const trustedCookieAgeMs = days * 24 * 60 * 60 * 1000;
     const expiresAt = new Date(Date.now() + trustedCookieAgeMs);
     // --- FIN LÓGICA MODIFICADA ---
@@ -53,13 +48,13 @@ async function createTrustedDevice(req, res, userId) {
       userId: userId,
       token: token, 
       userAgent: req.headers['user-agent'],
-      expiresAt: expiresAt // Guardar la fecha de expiración calculada
+      expiresAt: expiresAt
     });
 
     res.cookie(TRUSTED_COOKIE_NAME, token, {
       httpOnly: true, 
       secure: process.env.NODE_ENV === 'production', 
-      expires: expiresAt, // Usar la misma fecha para la cookie
+      expires: expiresAt, 
       sameSite: 'Strict'
     });
     
@@ -89,8 +84,6 @@ async function checkTrustedDevice(req, userId) {
     return false;
   }
 
-  // La lógica de expiración ya funciona,
-  // porque compara con la fecha 'expiresAt' guardada en la BDD.
   if (trusted.expiresAt < new Date()) {
     logDebug(2, `[Auth] Check Trusted: Dispositivo expirado. Eliminando...`);
     await trusted.destroy();
@@ -207,7 +200,6 @@ exports.verifyMfa = async (req, res) => {
 exports.doLogout = (req, res) => {
   logDebug(3, `[Auth] Usuario '${req.session.user?.username}' cerrando sesión.`);
   
-  // Limpiamos SOLO la cookie de sesión
   res.clearCookie('connect.sid'); 
 
   req.session.destroy((err) => {

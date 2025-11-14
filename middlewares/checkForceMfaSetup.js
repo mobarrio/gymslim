@@ -1,4 +1,4 @@
-// Fichero: middlewares/checkForceMfaSetup.js (NUEVO)
+// Fichero: middlewares/checkForceMfaSetup.js
 const { logDebug } = require('../utils/logger');
 
 /**
@@ -18,15 +18,14 @@ exports.checkForceMfaSetup = (req, res, next) => {
     // 3. Permite acceder a /profile o /logout, pero bloquea todo lo demás.
     if (req.path.startsWith('/profile') || req.path === '/logout') {
       logDebug(3, `[MFA] Usuario ${user.username} forzado a configurar MFA, permitiendo acceso a ${req.path}`);
-      return next();
+      return next(); // Llama a next() si el acceso está permitido
     } else {
       // 4. Bloquear y redirigir a /profile
       logDebug(2, `[MFA] Bloqueando acceso a ${req.path}. Redirigiendo a ${user.username} a /profile para configurar MFA.`);
-      // Redirige al perfil con un mensaje de advertencia
       return res.redirect('/profile?error=' + encodeURIComponent('Debes configurar la autenticación de dos factores (MFA) antes de continuar.'));
     }
   }
 
   // Si no está forzado, continuar normalmente
-  next();
+  next(); // Llama a next() si no hay bloqueo
 };

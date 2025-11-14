@@ -14,7 +14,7 @@
         .form-container {
             margin-bottom: 30px;
         }
-        /* Estilos de MFA Modal (sin cambios) */
+        /* Estilos de MFA Modal (sin cambios en general, solo para mostrar el texto) */
         .mfa-modal { display: none; position: fixed; z-index: 1001; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); align-items: center; justify-content: center; }
         .mfa-modal-content { background-color: #fefefe; margin: auto; padding: 20px; border: 1px solid #888; border-radius: 8px; width: 90%; max-width: 450px; text-align: center; }
         .mfa-modal-content h3 { margin-top: 0; }
@@ -24,14 +24,21 @@
         #mfa-verify-form input { width: 100%; box-sizing: border-box; text-align: center; font-size: 1.2rem; letter-spacing: 2px; }
         .mfa-modal-buttons { display: flex; justify-content: space-between; margin-top: 20px; }
         #mfa-error-message { color: #a00; font-size: 14px; margin-top: 10px; display: none; }
-        .alert-security {
-          background-color: #fff3cd;
-          color: #856404;
-          border: 1px solid #ffeeba;
-          padding: 15px;
-          border-radius: 5px;
-          margin-bottom: 20px;
-          font-weight: bold;
+        .alert-security { background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; padding: 15px; border-radius: 5px; margin-bottom: 20px; font-weight: bold; }
+
+        /* Estilos específicos para la clave OTP */
+        #mfa-manual-key {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1.1em;
+            font-weight: bold;
+            letter-spacing: 1px;
+            color: #007bff;
+            background-color: #f0f8ff;
+            padding: 8px;
+            border-radius: 4px;
+            margin-top: 10px;
+            display: none; /* Oculto hasta que se genera */
+            word-break: break-all;
         }
     </style>
 </head>
@@ -45,10 +52,17 @@
             <div id="mfa-setup-content">
                 <h3>Activar Autenticación (MFA)</h3>
                 <p>Escanea el código QR con tu app de autenticación (Google Authenticator, Authy, etc.).</p>
+                
                 <div id="mfa-qr-code" class="loading">
                     Generando código QR...
                 </div>
-                <p>Luego, introduce el código de 6 dígitos para verificar.</p>
+                
+                <!-- --- ¡NUEVO! CLAVE MANUAL --- -->
+                <p style="font-size: 0.9em; margin-bottom: 5px;">O introduce la clave manualmente:</p>
+                <div id="mfa-manual-key"></div>
+                <!-- --- FIN NUEVO --- -->
+
+                <p style="margin-top: 15px;">Luego, introduce el código de 6 dígitos para verificar.</p>
                 <form id="mfa-verify-form">
                     <input type="text" id="mfa-token-input" placeholder="123456" maxlength="6" inputmode="numeric">
                     <div id="mfa-error-message"></div>
@@ -81,14 +95,12 @@
     <div class="container-profile">
         <h1>Mi Perfil</h1>
 
-        <!-- --- ¡NUEVO! ALERTA DE CONFIGURACIÓN FORZADA --- -->
+        <!-- ALERTA DE CONFIGURACIÓN FORZADA -->
         <% if (mustConfigureMfa) { %>
             <div class="alert-security">
                 Su administrador ha restablecido la configuración de seguridad. Debe configurar su MFA antes de continuar.
             </div>
         <% } %>
-        <!-- --- FIN ALERTA --- -->
-
 
         <!-- Notificación de Éxito General (de URL o MFA) -->
         <% if (locals.message) { %>

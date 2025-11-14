@@ -1,4 +1,4 @@
-// Fichero: routes/admin.js (Versión Golf - CORREGIDO)
+// Fichero: routes/admin.js (Versión Hotel/Golf - FINAL)
 const express = require('express');
 const router = express.Router();
 const adminController = require('../controllers/adminController');
@@ -23,18 +23,13 @@ router.post('/users/reset-pw/:id', adminController.resetUserPassword);
 router.get('/users/change-password/:id', adminController.showChangePasswordForm);
 router.post('/users/change-password/:id', adminController.changeUserPassword);
 
-// --- Gestión de MFA (Versión Foxtrot) ---
+// --- Gestión de MFA (Versión Foxtrot/Hotel) ---
 router.post('/users/disable-mfa/:id', adminController.adminDisableMfa);
+router.post('/users/force-mfa/:id', adminController.adminForceMfaSetup);
 
-// --- Gestión de MFA Forzado (Versión Hotel) ---
-router.post('/users/force-mfa/:id', adminController.adminForceMfaSetup); // Esta línea es correcta.
-
-// --- ¡NUEVO! Gestión de Configuración (Versión Golf) ---
-// La línea 36 (o similar) que da error
-router.get('/settings', adminController.showSettings); 
-
+// --- Gestión de Configuración (Versión Golf) ---
+router.get('/settings', adminController.showSettings);
 router.post('/settings', adminController.saveSettings);
-// --- FIN NUEVO ---
-
+router.post('/settings/purge-cache', adminController.purgeCache); // <-- Ruta de Purga
 
 module.exports = router;

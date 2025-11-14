@@ -11,6 +11,21 @@
             max-width: 600px;
             margin: 20px auto;
         }
+        .form-container { margin-bottom: 30px; }
+        .purge-section {
+            border-top: 1px dashed #ccc;
+            padding-top: 20px;
+            margin-top: 30px;
+        }
+        .btn-purge {
+            background-color: #f0ad4e;
+            color: #333;
+            border: none;
+            cursor: pointer;
+            padding: 10px 15px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -19,22 +34,20 @@
     <div class="container-admin">
         <h1>Configuración del Sistema</h1>
 
+        <% if (locals.message) { %>
+            <div class="success-msg"><%= message %></div>
+        <% } %>
+        <% if (locals.error) { %>
+            <div class="error-msg"><%= error %></div>
+        <% } %>
+
+        <!-- Formulario 1: Gestión de Días de Confianza -->
         <form action="/admin/settings" method="POST" class="form-container">
             
-            <% if (locals.message) { %>
-                <div class="success-msg"><%= message %></div>
-            <% } %>
-            <% if (locals.error) { %>
-                <div class="error-msg"><%= error %></div>
-            <% } %>
-
             <h2>Seguridad (MFA)</h2>
             <div>
                 <label for="trusted_device_days">Duración del "Dispositivo de Confianza" (días)</label>
-                <!-- 
-                  El controlador pasa 'settings.trusted_device_days' 
-                  y lo usamos para rellenar el valor actual.
-                -->
+                <!-- Se rellena con el valor dinámico de la BDD -->
                 <input type="number" 
                        id="trusted_device_days" 
                        name="trusted_device_days" 
@@ -47,6 +60,17 @@
             
             <button type="submit" class="btn-primary">Guardar Configuración</button>
         </form>
+
+        <!-- Formulario 2: Purga de Caché -->
+        <div class="form-container purge-section">
+            <h2>Gestión de Caché</h2>
+            <p>Borra todas las entradas de horarios guardadas para forzar una recarga inmediata de la API externa en el próximo acceso.</p>
+            
+            <!-- El formulario llama a la ruta de purga con POST -->
+            <form action="/admin/settings/purge-cache" method="POST" onsubmit="return confirm('ADVERTENCIA: ¿Estás seguro de que quieres PURGAR TODA la caché de horarios? Esto forzará una recarga inmediata de la API.');">
+                <button type="submit" class="btn-purge">Purgar Cache de Clases</button>
+            </form>
+        </div>
 
     </div>
 

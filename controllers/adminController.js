@@ -1,16 +1,18 @@
-// Fichero: controllers/adminController.js (Versión Golf - FINAL CORREGIDO)
-const { User, sequelize, TrustedDevice } = require('../database'); 
+// Fichero: controllers/adminController.js (Versión Hotel/Golf - FINAL)
+const { User, sequelize, TrustedDevice, ApiCache } = require('../database'); 
 const bcrypt = require('bcrypt');
 const { logDebug } = require('../utils/logger'); 
 const { getSetting, updateSetting } = require('../utils/settingsCache');
+const { fetchAllApiData } = require('../services/cacheService'); // Para la función de purga
 
 // --- Dashboard ---
 exports.showDashboard = (req, res) => {
-  res.redirect('/admin/users'); 
+  res.redirect('/admin/users'); // Redirige a la lista de usuarios
 };
 
-// --- Gestión de Usuarios (Versión Delta) ---
+// --- Gestión de Usuarios (Versión Delta/Echo/Hotel) ---
 
+// Mostrar lista de todos los usuarios
 exports.listUsers = async (req, res) => {
   try {
     const users = await User.findAll({ 
@@ -23,6 +25,7 @@ exports.listUsers = async (req, res) => {
   }
 };
 
+// Mostrar formulario para crear o editar usuario
 exports.showUserForm = async (req, res) => {
   try {
     const userId = req.params.id;
@@ -36,6 +39,7 @@ exports.showUserForm = async (req, res) => {
   }
 };
 
+// Crear nuevo usuario
 exports.createUser = async (req, res) => {
   const { username, password, name, bookingEmail, isAdmin } = req.body;
   
@@ -62,6 +66,7 @@ exports.createUser = async (req, res) => {
   }
 };
 
+// Actualizar usuario existente
 exports.updateUser = async (req, res) => {
   const userId = req.params.id;
   const { username, name, bookingEmail, isAdmin } = req.body;
@@ -87,6 +92,7 @@ exports.updateUser = async (req, res) => {
   }
 };
 
+// Eliminar usuario
 exports.deleteUser = async (req, res) => {
   const userId = req.params.id;
   if (req.session.userId == userId) {
@@ -102,15 +108,16 @@ exports.deleteUser = async (req, res) => {
 
 // --- Gestión de Contraseñas (Versión Echo) ---
 
+// Resetea la contraseña a 'password123'
 exports.resetUserPassword = async (req, res) => {
   const userId = req.params.id;
-  const newPassword = 'password123'; 
+  const newPassword = 'password123'; // Contraseña temporal
   try {
     const user = await User.findByPk(userId);
     if (!user) return res.status(404).send('Usuario no encontrado');
 
     user.passwordHash = await bcrypt.hash(newPassword, parseInt(process.env.SALT_ROUNDS, 10));
-    user.mustChangePassword = true; 
+    user.mustChangePassword = true; // Forzar cambio
     await user.save();
 
     res.redirect(`/admin/users?message=Contraseña de ${user.username} reseteada a "${newPassword}"`);
@@ -119,6 +126,7 @@ exports.resetUserPassword = async (req, res) => {
   }
 };
 
+// Muestra el formulario para que un admin cambie la contraseña de un usuario.
 exports.showChangePasswordForm = async (req, res) => {
   try {
     const user = await User.findByPk(req.params.id);
@@ -135,6 +143,7 @@ exports.showChangePasswordForm = async (req, res) => {
   }
 };
 
+// Procesa el cambio de contraseña realizado por un admin.
 exports.changeUserPassword = async (req, res) => {
   const { newPassword, confirmPassword } = req.body;
   const userId = req.params.id;
@@ -171,6 +180,7 @@ exports.changeUserPassword = async (req, res) => {
 
 // --- Gestión de MFA (Versión Foxtrot/Hotel) ---
 
+// Desactiva el MFA para un usuario.
 exports.adminDisableMfa = async (req, res) => {
   const userId = req.params.id;
   const adminUsername = req.session.user.username;
@@ -202,6 +212,7 @@ exports.adminDisableMfa = async (req, res) => {
   }
 };
 
+// Fuerza a un usuario a (re)configurar MFA en su próximo login.
 exports.adminForceMfaSetup = async (req, res) => {
   const userId = req.params.id;
   const adminUsername = req.session.user.username;
@@ -235,9 +246,9 @@ exports.adminForceMfaSetup = async (req, res) => {
 
 // --- Gestión de Configuración (Versión Golf) ---
 
+// Muestra la página de configuración del sistema.
 exports.showSettings = (req, res) => {
   try {
-    // Obtener el valor actual desde la caché
     const trustedDays = getSetting('trusted_device_days', '30');
     
     res.render('admin/settings', {
@@ -253,6 +264,7 @@ exports.showSettings = (req, res) => {
   }
 };
 
+// Actualiza la configuración del sistema.
 exports.saveSettings = async (req, res) => {
   const { trusted_device_days } = req.body;
   
@@ -277,4 +289,26 @@ exports.saveSettings = async (req, res) => {
       error: error.message
     });
   }
+};
+
+// --- ¡NUEVA FUNCIÓN! Purga de Caché (Versión Golf) ---
+
+/**
+ * POST /admin/settings/purge-cache
+ * Elimina todos los registros de la tabla ApiCache.
+ */
+exports.purgeCache = async (req, res) => {
+    try {
+        const count = await ApiCache.destroy({
+            where: {}, // Borra todos los registros
+            truncate: true // Reinicia el contador de ID
+        });
+        
+        logDebug(2, `[Cache] Admin ${req.session.user.username} purgó la caché. Se eliminaron ${count} registros.`);
+        res.redirect('/admin/settings?message=' + encodeURIComponent(`Caché purgada con éxito. Se eliminaron ${count} entradas.`));
+
+    } catch (error) {
+        logDebug(1, '[Admin] Error al purgar caché:', error.message);
+        res.redirect('/admin/settings?error=' + encodeURIComponent(`Error al purgar caché: ${error.message}`));
+    }
 };

@@ -1,7 +1,7 @@
-// Fichero: database.js (Versión Hotel - MODIFICADO)
+// Fichero: database.js (Versión Hotel - CORRECCIÓN DE SINCRONIZACIÓN FINAL)
 const { Sequelize, DataTypes } = require('sequelize');
 const bcrypt = require('bcrypt');
-const { logDebug } = require('./utils/logger'); // Importar logger
+const { logDebug } = require('./utils/logger'); 
 const session = require('express-session');
 const SequelizeStore = require('connect-session-sequelize')(session.Store);
 
@@ -11,147 +11,86 @@ const sequelize = new Sequelize({
   logging: (msg) => logDebug(4, '[DB]', msg)
 });
 
-// --- Definición de Modelos ---
+// --- Definición de Modelos (Sin cambios en las definiciones) ---
 
-// Modelo de Usuario (MODIFICADO para Versión Hotel)
 const User = sequelize.define('User', {
-  username: {
-    type: DataTypes.STRING,
-    allowNull: false,
-    unique: true
-  },
-  name: {
-    type: DataTypes.STRING,
-    allowNull: true
-  },
-  bookingEmail: {
-    type: DataTypes.STRING,
-    allowNull: true,
-    validate: {
-      isEmail: true
-    }
-  },
-  passwordHash: {
-    type: DataTypes.STRING,
-    allowNull: false
-  },
-  mustChangePassword: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false
-  },
-  isAdmin: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false
-  },
-  mfaEnabled: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false
-  },
-  mfaSecret: {
-    type: DataTypes.STRING,
-    allowNull: true
-  },
-  // --- ¡CAMPO NUEVO! (Versión Hotel) ---
-  // Si es true, fuerza al usuario a configurar MFA en el login.
-  mustConfigureMfa: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false
-  }
-  // --- FIN CAMPO NUEVO ---
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  username: { type: DataTypes.STRING, allowNull: false, unique: true },
+  name: { type: DataTypes.STRING, allowNull: true },
+  bookingEmail: { type: DataTypes.STRING, allowNull: true, validate: { isEmail: true } },
+  passwordHash: { type: DataTypes.STRING, allowNull: false },
+  mustChangePassword: { type: DataTypes.BOOLEAN, defaultValue: false },
+  isAdmin: { type: DataTypes.BOOLEAN, defaultValue: false },
+  mfaEnabled: { type: DataTypes.BOOLEAN, defaultValue: false },
+  mfaSecret: { type: DataTypes.STRING, allowNull: true },
+  mustConfigureMfa: { type: DataTypes.BOOLEAN, defaultValue: false }
 });
 
-// Modelo para la Caché de API
 const ApiCache = sequelize.define('ApiCache', {
-  cacheKey: {
-    type: DataTypes.STRING,
-    primaryKey: true
-  },
-  data: {
-    type: DataTypes.TEXT,
-    allowNull: false
-  },
-  expiresAt: {
-    type: DataTypes.DATE,
-  }
+  cacheKey: { type: DataTypes.STRING, primaryKey: true },
+  data: { type: DataTypes.TEXT, allowNull: false },
+  expiresAt: { type: DataTypes.DATE }
 });
 
-// Modelo de Sesión (para connect-session-sequelize)
 const Session = sequelize.define('Session', {
-  sid: {
-    type: DataTypes.STRING,
-    primaryKey: true,
-  },
+  sid: { type: DataTypes.STRING, primaryKey: true },
   userId: DataTypes.STRING,
   expires: DataTypes.DATE,
   data: DataTypes.TEXT,
 });
 
-// Modelo de Dispositivos de Confianza
 const TrustedDevice = sequelize.define('TrustedDevice', {
-  id: {
-    type: DataTypes.INTEGER,
-    primaryKey: true,
-    autoIncrement: true
-  },
-  userId: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-    references: {
-      model: User,
-      key: 'id'
-    }
-  },
-  token: {
-    type: DataTypes.STRING,
-    allowNull: false,
-    unique: true
-  },
-  userAgent: {
-    type: DataTypes.STRING,
-    allowNull: true
-  },
-  expiresAt: {
-    type: DataTypes.DATE,
-    allowNull: false
-  }
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  userId: { type: DataTypes.INTEGER, allowNull: false, references: { model: User, key: 'id' } },
+  token: { type: DataTypes.STRING, allowNull: false, unique: true },
+  userAgent: { type: DataTypes.STRING, allowNull: true },
+  expiresAt: { type: DataTypes.DATE, allowNull: false }
 });
 
-// Modelo de Configuración (Versión Golf)
 const Setting = sequelize.define('Setting', {
-  key: {
-    type: DataTypes.STRING,
-    primaryKey: true,
-  },
-  value: {
-    type: DataTypes.STRING,
-    allowNull: true,
-  }
+  key: { type: DataTypes.STRING, primaryKey: true },
+  value: { type: DataTypes.STRING, allowNull: true }
 }, {
   timestamps: false 
 });
-
 
 // --- Relaciones ---
 User.hasMany(TrustedDevice, { foreignKey: 'userId', onDelete: 'CASCADE' });
 TrustedDevice.belongsTo(User, { foreignKey: 'userId' });
 
 
-// --- Sincronización ---
+// --- Sincronización (Modificada) ---
 const initDatabase = async () => {
   
-  // Sincronizamos explícitamente TODOS nuestros modelos
-  // alter:true actualiza las tablas con las nuevas columnas
-  await User.sync({ alter: true }); // <-- Actualizado con mustConfigureMfa
-  await ApiCache.sync({ alter: true });
-  await Session.sync({ alter: true }); 
-  await TrustedDevice.sync({ alter: true });
-  await Setting.sync({ alter: true }); 
+  // 1. Verificar si la base de datos ya tiene el flag de sincronización inicial
+  const syncStatus = await Setting.findOne({ where: { key: 'initial_sync_complete' } });
+  
+  const syncOptions = { alter: !syncStatus }; // Usar alter: true solo si syncStatus es nulo (primera vez)
+  
+  if (!syncStatus) {
+      logDebug(1, 'EJECUCIÓN INICIAL: Usando ALTER: TRUE para crear todas las columnas...');
+  } else {
+      logDebug(1, 'EJECUCIÓN NORMAL: Usando SINCRONIZACIÓN SEGURA (alter: false) para verificar estructura.');
+  }
 
-  logDebug(1, 'Modelos [User], [ApiCache], [Session], [TrustedDevice] y [Setting] sincronizados.');
+  // 2. Sincronizamos todos los modelos con las opciones condicionales
+  await User.sync(syncOptions); 
+  await ApiCache.sync(syncOptions);
+  await Session.sync(syncOptions);
+  await TrustedDevice.sync(syncOptions);
+  await Setting.sync(syncOptions); 
+  
+  // 3. Si era la primera vez, guardamos el flag para que no se repita
+  if (!syncStatus) {
+      await Setting.create({ key: 'initial_sync_complete', value: 'true' });
+      logDebug(1, 'Flag "initial_sync_complete" guardado en la BDD.');
+  }
+  
+  logDebug(1, 'Base de datos sincronizada.');
 
-  // Código de inicialización
+
+  // Código de inicialización (Admin y Configuración)
   try {
-    // Inicializar Admin
     const adminUser = await User.findOne({ where: { username: 'admin' } });
     if (!adminUser) {
       logDebug(1, 'No se encontró admin, creando usuario "admin" por defecto...');
@@ -165,10 +104,9 @@ const initDatabase = async () => {
       });
     }
 
-    // Inicializar Configuración por Defecto
     await Setting.findOrCreate({
       where: { key: 'trusted_device_days' },
-      defaults: { value: '30' } // Valor por defecto de 30 días
+      defaults: { value: '30' }
     });
 
   } catch (error) {

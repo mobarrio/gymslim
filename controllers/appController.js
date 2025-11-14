@@ -1,7 +1,7 @@
-// Fichero: controllers/appController.js
+// Fichero: controllers/appController.js (CORRECCIÓN FINAL DE ZONA HORARIA)
 const { ApiCache } = require('../database');
 const { fetchAllApiData } = require('../services/cacheService');
-const { logDebug } = require('../utils/logger');
+const { logDebug } = require('../utils/logger'); 
 
 // Helpers (movidos aquí para estar disponibles)
 const helpers = {
@@ -9,69 +9,100 @@ const helpers = {
   obtenerInstructor: (event) => { if (event.instructors && event.instructors.length > 0) { return event.instructors[0].name || 'N/A'; } if (event.title && event.title.toLowerCase().includes('virtual')) { return ''; } return 'Gimnasio'; },
   obtenerAvatar: (event) => { if (event.instructors && event.instructors.length > 0 && event.instructors[0].avatar) { const avatarUrl = event.instructors[0].avatar; if (avatarUrl.startsWith('http')) return avatarUrl; } return 'https://i.imgur.com/832DYNW.png'; },
   formatearPlazas: (places) => { if (!places) return 'N/A'; const booked = places.booked || 0; const total = places.total || 0; const available = total - booked; return `${booked} / ${total} (${available})`; },
-  formatearFecha: (mobile) => { if (!mobile) return 'N/A'; const diaSemana = helpers.capitalizar(mobile.week_day || ''); const diaMes = mobile.month_day || ''; const hora = mobile.start_time || ''; return `${diaSemana} ${diaMes} ${hora}`; }
+  formatearFecha: (mobile) => { if (!mobile) return 'N/A'; const diaSemana = helpers.capitalizar(mobile.week_day || ''); const diaMes = mobile.month_day || ''; const hora = mobile.start_time || ''; return `${diaSemana} ${diaMes} ${hora}`; },
+  obtenerUrlReserva: (sessionId) => { return `${process.env.BOOKING_API_URL}/${sessionId}`; }
 };
 
-// Función para obtener la fecha de hoy YYYY-MM-DD
-function getTodayString() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
+// --- Funciones Robustas de Fecha ---
+
+/**
+ * Función para formatear una fecha al estándar YYYY-MM-DD local,
+ * asegurando que no retrocede por diferencias de huso horario (UTC - Local).
+ * @param {Date} dateObj
+ * @returns {string} Fecha formateada.
+ */
+function formatDate(dateObj) {
+  const year = dateObj.getFullYear();
+  const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const day = String(dateObj.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
 
-// --- NUEVA FUNCIÓN ---
 /**
- * Convierte un string de rango (ej. 'today') en un objeto { start, end }
+ * Función para obtener la fecha de hoy YYYY-MM-DD
+ */
+function getTodayString() {
+  return formatDate(new Date());
+}
+
+/**
+ * Función para sumar días a una fecha de manera segura.
+ */
+const addDays = (date, days) => {
+  const d = new Date(date);
+  d.setDate(date.getDate() + days);
+  return d;
+};
+
+// --- Fin Funciones Robustas de Fecha ---
+
+
+/**
+ * Convierte un string de rango (ej. 'tomorrow') en un objeto { start, end }
  * @param {string} rangeKey - La clave del rango (today, tomorrow, etc.)
  * @returns {{start: string, end: string}}
  */
 function calculateDatesFromRangeKey(rangeKey) {
+  // Siempre trabajamos con la fecha de hoy al inicio de la jornada (00:00:00)
   const today = new Date();
-  const todayStr = today.toISOString().split('T')[0];
-  let startDate = todayStr;
-  let endDate = todayStr;
+  today.setHours(0, 0, 0, 0); 
+  
+  let startDate = formatDate(today);
+  let endDate = formatDate(today);
+  
+  let tempDate = new Date(today); // Usamos un objeto temporal para los cálculos
 
   switch (rangeKey) {
-    case 'today':
-      // start y end ya son todayStr
-      break;
     case 'tomorrow':
-      const tomorrow = new Date(today);
-      tomorrow.setDate(today.getDate() + 1);
-      const tomorrowStr = tomorrow.toISOString().split('T')[0];
-      startDate = tomorrowStr;
-      endDate = tomorrowStr;
+      // Mañana es Hoy + 1 día
+      tempDate = addDays(today, 1);
+      startDate = formatDate(tempDate);
+      endDate = formatDate(tempDate);
       break;
+      
     case 'next_7':
-      const next7 = new Date(today);
-      next7.setDate(today.getDate() + 6); // 6 días desde hoy = 7 días en total
-      endDate = next7.toISOString().split('T')[0];
+      // Próximos 7 días: Hoy hasta Hoy + 6 días
+      tempDate = addDays(today, 6); 
+      endDate = formatDate(tempDate);
       break;
+      
     case 'this_week':
-      // Lógica de la Versión Alfa: 0=Dom, 1=Lun
-      const dayOfWeek = today.getUTCDay(); 
+      // 1. Encontrar el Lunes de esta semana
+      const dayOfWeek = today.getDay(); // 0=Dom, 1=Lun
       const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+      const monday = addDays(today, diffToMonday);
       
-      const monday = new Date(today);
-      monday.setDate(today.getDate() + diffToMonday);
-      
-      const sunday = new Date(monday);
-      sunday.setDate(monday.getDate() + 6);
+      // 2. Encontrar el Domingo de esta semana
+      const sunday = addDays(monday, 6);
 
-      startDate = monday.toISOString().split('T')[0];
-      endDate = sunday.toISOString().split('T')[0];
+      startDate = formatDate(monday);
+      endDate = formatDate(sunday);
       
-      // Asegurarnos de no mostrar días pasados de esta semana
+      // 3. CRÍTICO: Asegurarnos de que el rango no empieza en el pasado
+      const todayStr = getTodayString();
       if (startDate < todayStr) {
         startDate = todayStr;
       }
       break;
+      
+    case 'today':
+    default:
+      // start y end ya son hoy
+      break;
   }
+  
   return { start: startDate, end: endDate };
 }
-// --- FIN NUEVA FUNCIÓN ---
 
 
 // GET /horario
@@ -79,35 +110,29 @@ exports.showHorario = (req, res) => {
   const today = getTodayString();
   logDebug(3, "Sirviendo formulario de selección de fecha EJS.");
   
-  // Pasa datos a la plantilla EJS
-  // res.locals.user y res.locals.activeBookingEmail ya están seteados por el middleware global
   res.render('horario', {
     today: today,
-    error: null, // Para manejar errores de /list
-    range_key: 'custom' // Para que el nav muestre "Rango Personalizado..."
+    error: null, 
+    range_key: 'custom'
   });
 };
 
 // GET /list
 exports.showList = async (req, res) => {
-  // --- LÓGICA DE FECHAS MODIFICADA ---
   const { start, end, refresh, activity, range_key } = req.query;
   let filterStartDate, filterEndDate, effectiveRangeKey;
 
   const errorRender = (message) => {
-    return res.status(400).render('horario', {
-      today: getTodayString(),
-      error: message,
-      range_key: 'custom'
+    return res.status(400).render('horario', { 
+      today: getTodayString(), 
+      error: message, 
+      range_key: 'custom' 
     });
   };
 
+  // --- LÓGICA DE MANEJO DE RANGO (CRÍTICO) ---
   if (range_key) {
-    // Opción 1: El usuario usó el selector rápido
-    logDebug(3, `Ruta /list accedida con range_key: ${range_key}`);
     if (range_key === 'custom') {
-      // Si seleccionó "Custom", lo mandamos a la página de horario
-      // (Aunque el JS ya hace esto, es un fallback)
       return res.redirect('/horario');
     }
     const dates = calculateDatesFromRangeKey(range_key);
@@ -115,21 +140,19 @@ exports.showList = async (req, res) => {
     filterEndDate = dates.end;
     effectiveRangeKey = range_key;
   } else if (start && end) {
-    // Opción 2: El usuario usó el formulario de /horario (o un bookmark)
-    logDebug(3, `Ruta /list accedida con fechas: ${start} a ${end}`);
     filterStartDate = start;
     filterEndDate = end;
-    // Si las fechas coinciden con un rango, lo seleccionamos
+    
     if (start === end && start === getTodayString()) {
        effectiveRangeKey = 'today';
     } else {
-       effectiveRangeKey = 'custom'; // Si vienen fechas, es un rango custom
+       effectiveRangeKey = 'custom';
     }
   } else {
-    // Opción 3: El usuario accedió a /list sin fechas (ej. desde /)
-    // Redirigimos a una vista por defecto (Hoy)
+    // Default: Redirigir a 'today' si no hay parámetros
     return res.redirect('/list?range_key=today');
   }
+  // --- FIN LÓGICA DE MANEJO DE RANGO ---
   
   const selectedActivity = activity || 'todas';
   const today = getTodayString();
@@ -138,57 +161,66 @@ exports.showList = async (req, res) => {
 
   // --- Validación de Fechas ---
   if (!filterStartDate || !filterEndDate) { return errorRender('Fechas de inicio y fin son requeridas.'); }
-  // (Validación de fechas pasadas se maneja en el filtro de "eventsAfterNow")
   if (filterEndDate < filterStartDate) { return errorRender('La fecha fin no puede ser anterior a la fecha inicio.'); }
   // --- Fin Validación ---
 
   try {
     const isRefresh = refresh === 'true';
+    
+    // 1. Obtener datos (de la API o la caché)
     const allEventsFromApi = await fetchAllApiData(isRefresh);
     logDebug(3, `Total de eventos únicos de API/Cache: ${allEventsFromApi.length}`);
 
+    // 2. Generar lista de actividades
     const allActivityNames = [...new Set(allEventsFromApi.map(e => e.activity_name))]
-      .filter(name => name) // Filtra nulos o strings vacíos
+      .filter(name => name)
       .sort();
     logDebug(3, `Generadas ${allActivityNames.length} actividades únicas para el filtro.`);
 
-    // --- Filtros ---
+    // 3. FILTRO 1: RANGO DE FECHAS (Filtro de usuario)
     const eventsInDateRange = allEventsFromApi.filter(event => {
       const eventDateStr = event.start.split('T')[0];
       return eventDateStr >= filterStartDate && eventDateStr <= filterEndDate;
     });
     logDebug(3, `Eventos tras Filtro de Rango: ${eventsInDateRange.length}`);
     
+    // 4. FILTRO 2: HORA ACTUAL (Solo para el día actual)
     const now = new Date(); 
     const eventsAfterNow = eventsInDateRange.filter(event => {
       const eventDateStr = event.start.split('T')[0];
+      
+      // Si la fecha del evento es HOY, filtramos por la hora.
       if (eventDateStr === today) {
         const eventStartTime = new Date(event.start);
-        return eventStartTime >= now;
+        // Debe ser MAYOR o IGUAL a la hora actual
+        return eventStartTime >= now; 
       }
-      // Si la fecha del evento es futura, siempre es true
+      
+      // Si la fecha del evento es FUTURA, siempre es true.
       return eventDateStr > today;
     });
     logDebug(3, `Eventos tras Filtro de Hora: ${eventsAfterNow.length}`);
 
+    // 5. FILTRO 3: ACTIVIDAD
     const finalFilteredEvents = (selectedActivity === 'todas')
       ? eventsAfterNow
       : eventsAfterNow.filter(event => event.activity_name === selectedActivity);
-    logDebug(3, `Eventos tras Filtro de Actividad (${selectedActivity}): ${finalFilteredEvents.length}`);
+    logDebug(3, `Eventos tras Filtro de Actividad: ${finalFilteredEvents.length}`);
 
-    // --- Renderizar ---
+    // 6. Renderizar
     res.render('list', {
       events: finalFilteredEvents,
       allActivityNames: allActivityNames,
       startDate: filterStartDate,
       endDate: filterEndDate,
       selectedActivity: selectedActivity,
-      helpers: helpers, // Pasamos los helpers a la vista
-      range_key: effectiveRangeKey // Pasamos el range_key para el <select>
+      helpers: helpers,
+      range_key: effectiveRangeKey
     });
 
   } catch (error) {
     console.error("Error al procesar /list:", error);
-    res.status(500).send('Error procesando la solicitud: ' + error.message);
+    logDebug(1, `Error en showList: ${error.message}`);
+    res.status(500).send('Error procesando la solicitud de clases: ' + error.message);
   }
 };
