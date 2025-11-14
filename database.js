@@ -1,4 +1,4 @@
-// Fichero: database.js (Versión Golf - MODIFICADO)
+// Fichero: database.js (Versión Hotel - MODIFICADO)
 const { Sequelize, DataTypes } = require('sequelize');
 const bcrypt = require('bcrypt');
 const { logDebug } = require('./utils/logger'); // Importar logger
@@ -13,7 +13,7 @@ const sequelize = new Sequelize({
 
 // --- Definición de Modelos ---
 
-// Modelo de Usuario (Sin cambios)
+// Modelo de Usuario (MODIFICADO para Versión Hotel)
 const User = sequelize.define('User', {
   username: {
     type: DataTypes.STRING,
@@ -50,10 +50,17 @@ const User = sequelize.define('User', {
   mfaSecret: {
     type: DataTypes.STRING,
     allowNull: true
+  },
+  // --- ¡CAMPO NUEVO! (Versión Hotel) ---
+  // Si es true, fuerza al usuario a configurar MFA en el login.
+  mustConfigureMfa: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
   }
+  // --- FIN CAMPO NUEVO ---
 });
 
-// Modelo para la Caché de API (Sin cambios)
+// Modelo para la Caché de API
 const ApiCache = sequelize.define('ApiCache', {
   cacheKey: {
     type: DataTypes.STRING,
@@ -68,7 +75,7 @@ const ApiCache = sequelize.define('ApiCache', {
   }
 });
 
-// Modelo de Sesión (Sin cambios)
+// Modelo de Sesión (para connect-session-sequelize)
 const Session = sequelize.define('Session', {
   sid: {
     type: DataTypes.STRING,
@@ -79,7 +86,7 @@ const Session = sequelize.define('Session', {
   data: DataTypes.TEXT,
 });
 
-// Modelo de Dispositivos de Confianza (Sin cambios)
+// Modelo de Dispositivos de Confianza
 const TrustedDevice = sequelize.define('TrustedDevice', {
   id: {
     type: DataTypes.INTEGER,
@@ -109,7 +116,7 @@ const TrustedDevice = sequelize.define('TrustedDevice', {
   }
 });
 
-// --- ¡NUEVO MODELO! (Configuración) ---
+// Modelo de Configuración (Versión Golf)
 const Setting = sequelize.define('Setting', {
   key: {
     type: DataTypes.STRING,
@@ -120,9 +127,8 @@ const Setting = sequelize.define('Setting', {
     allowNull: true,
   }
 }, {
-  timestamps: false // No necesitamos createdAt/updatedAt
+  timestamps: false 
 });
-// --- FIN NUEVO MODELO ---
 
 
 // --- Relaciones ---
@@ -134,11 +140,12 @@ TrustedDevice.belongsTo(User, { foreignKey: 'userId' });
 const initDatabase = async () => {
   
   // Sincronizamos explícitamente TODOS nuestros modelos
-  await User.sync({ alter: true });
+  // alter:true actualiza las tablas con las nuevas columnas
+  await User.sync({ alter: true }); // <-- Actualizado con mustConfigureMfa
   await ApiCache.sync({ alter: true });
   await Session.sync({ alter: true }); 
   await TrustedDevice.sync({ alter: true });
-  await Setting.sync({ alter: true }); // <-- AÑADIDO
+  await Setting.sync({ alter: true }); 
 
   logDebug(1, 'Modelos [User], [ApiCache], [Session], [TrustedDevice] y [Setting] sincronizados.');
 
@@ -158,12 +165,11 @@ const initDatabase = async () => {
       });
     }
 
-    // --- ¡NUEVO! Inicializar Configuración por Defecto ---
+    // Inicializar Configuración por Defecto
     await Setting.findOrCreate({
       where: { key: 'trusted_device_days' },
       defaults: { value: '30' } // Valor por defecto de 30 días
     });
-    // --- FIN NUEVO ---
 
   } catch (error) {
     logDebug(1, 'Error al inicializar la base de datos:', error);
@@ -177,5 +183,5 @@ module.exports = {
   ApiCache,
   Session,
   TrustedDevice,
-  Setting // <-- Exportar el nuevo modelo
+  Setting
 };

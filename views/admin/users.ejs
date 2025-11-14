@@ -12,8 +12,8 @@
         /* --- ACCIONES MODIFICADAS --- */
         .table-actions {
             display: flex;
-            flex-wrap: wrap; /* Permitir que los botones bajen si no caben */
-            gap: 5px; /* Espacio entre botones */
+            flex-wrap: wrap; 
+            gap: 5px; 
         }
         .btn-small {
             padding: 4px 8px;
@@ -24,30 +24,32 @@
             cursor: pointer;
             font-family: inherit;
         }
-        .btn-edit { background-color: #007bff; color: white; display: inline-block; } /* display para <a> */
-        .btn-change-pass { background-color: #17a2b8; color: white; display: inline-block; } /* display para <a> */
+        .btn-edit { background-color: #007bff; color: white; display: inline-block; } 
+        .btn-change-pass { background-color: #17a2b8; color: white; display: inline-block; } 
         .btn-reset { background-color: #ffc107; color: #333; }
         .btn-delete { background-color: #dc3545; color: white; }
         
-        /* --- ¡NUEVO ESTILO! --- */
-        .btn-mfa-disable { background-color: #fd7e14; color: white; } /* Naranja */
+        /* --- NUEVOS ESTILOS --- */
+        .btn-mfa-disable { background-color: #fd7e14; color: white; } /* Quitar MFA */
+        .btn-mfa-force { background-color: #8c00b0; color: white; } /* Forzar Setup (Morado) */
 
         .btn-secondary-link { margin-left: auto; }
         
         form[action*="delete"], 
         form[action*="reset-pw"],
-        form[action*="disable-mfa"] { /* --- ¡NUEVO! --- */
+        form[action*="disable-mfa"],
+        form[action*="force-mfa"] { /* <- Añadido force-mfa */
             display: inline-block;
             margin: 0;
         }
         
         /* --- COLUMNAS MODIFICADAS --- */
         .col-username { width: 15%; }
-        .col-name { width: 20%; }
+        .col-name { width: 15%; }
         .col-email { width: 20%; }
-        .col-role { width: 10%; }
-        .col-mfa { width: 10%; } /* --- ¡NUEVA! --- */
-        .col-actions { width: 25%; }
+        .col-role { width: 8%; }
+        .col-mfa { width: 8%; } 
+        .col-actions { width: 34%; }
         /* --- FIN MODIFICACIONES --- */
 
     </style>
@@ -73,7 +75,7 @@
                     <th class="col-name">Nombre</th>
                     <th class="col-email">Email de Reserva</th>
                     <th class="col-role">Rol</th>
-                    <th class="col-mfa">MFA</th> <!-- ¡NUEVA COLUMNA! -->
+                    <th class="col-mfa">MFA</th> 
                     <th class="col-actions">Acciones</th>
                 </tr>
             </thead>
@@ -96,18 +98,19 @@
                             <%= user.isAdmin ? 'Admin' : 'Usuario' %>
                         </td>
                         
-                        <!-- --- ¡NUEVA CELDA! --- -->
+                        <!-- --- CELDA MFA MODIFICADA --- -->
                         <td>
-                            <% if (user.mfaEnabled) { %>
+                            <% if (user.mustConfigureMfa) { %>
+                                <span style="color: #8c00b0; font-weight: bold;">Fuerza Setup</span>
+                            <% } else if (user.mfaEnabled) { %>
                                 <span style="color: #28a745; font-weight: bold;">Activado</span>
                             <% } else { %>
                                 <span style="color: #6c757d;">No</span>
                             <% } %>
                         </td>
-                        <!-- --- FIN NUEVA CELDA --- -->
+                        <!-- --- FIN CELDA MFA MODIFICADA --- -->
 
                         <td>
-                            <!-- --- SECCIÓN ACCIONES MODIFICADA --- -->
                             <div class="table-actions">
                                 <!-- Botón Editar -->
                                 <a href="/admin/users/edit/<%= user.id %>" class="btn-small btn-edit">Editar</a>
@@ -115,18 +118,27 @@
                                 <!-- Botón Cambiar Pass -->
                                 <a href="/admin/users/change-password/<%= user.id %>" class="btn-small btn-change-pass">Cambiar Pass</a>
 
-                                <!-- Botón Reset Pass (Form) -->
+                                <!-- Botón Reset Pass -->
                                 <form action="/admin/users/reset-pw/<%= user.id %>" method="POST" onsubmit="return confirm('¿Resetear contraseña de <%= user.username %> a "password123"?');">
                                     <button type="submit" class="btn-small btn-reset">Reset Pass</button>
                                 </form>
                                 
-                                <!-- --- ¡NUEVO BOTÓN/FORM! --- -->
+                                <!-- --- ¡NUEVO BOTÓN! --- -->
+                                <% if (user.id !== locals.user.id) { %>
+                                    <form action="/admin/users/force-mfa/<%= user.id %>" method="POST" onsubmit="return confirm('¿Seguro que quieres FORZAR la configuración de MFA para <%= user.username %>? El usuario será bloqueado hasta que lo haga.');">
+                                        <button type="submit" class="btn-small btn-mfa-force">Forzar Setup MFA</button>
+                                    </form>
+                                <% } %>
+                                <!-- --- FIN NUEVO BOTÓN --- -->
+
+
+                                <!-- Botón Quitar MFA -->
                                 <% if (user.mfaEnabled && user.id !== locals.user.id) { %>
                                     <form action="/admin/users/disable-mfa/<%= user.id %>" method="POST" onsubmit="return confirm('¿Seguro que quieres DESACTIVAR el MFA para <%= user.username %>?');">
                                         <button type="submit" class="btn-small btn-mfa-disable">Quitar MFA</button>
                                     </form>
                                 <% } %>
-                                <!-- --- FIN NUEVO BOTÓN --- -->
+                                
 
                                 <!-- Botón Eliminar (Form) -->
                                 <% if (user.id !== locals.user.id) { %>
@@ -135,7 +147,6 @@
                                     </form>
                                 <% } %>
                             </div>
-                            <!-- --- FIN DE LA SECCIÓN MODIFICADA --- -->
                         </td>
                     </tr>
                 <% }) %>
@@ -144,7 +155,6 @@
 
     </div>
     
-    <!-- Script (para el nav) -->
     <script src="/js/main.js"></script>
     
 </body>

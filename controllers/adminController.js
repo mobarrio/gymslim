@@ -1,24 +1,21 @@
-// Fichero: controllers/adminController.js (Versión Golf - MODIFICADO)
+// Fichero: controllers/adminController.js (Versión Golf - FINAL CORREGIDO)
 const { User, sequelize, TrustedDevice } = require('../database'); 
 const bcrypt = require('bcrypt');
-const { logDebug } = require('../utils/logger'); // Importar logger
-
-// --- ¡NUEVO! Importar el caché de settings ---
+const { logDebug } = require('../utils/logger'); 
 const { getSetting, updateSetting } = require('../utils/settingsCache');
 
 // --- Dashboard ---
 exports.showDashboard = (req, res) => {
-  res.redirect('/admin/users'); // Redirige a la lista de usuarios
+  res.redirect('/admin/users'); 
 };
 
-// --- Gestión de Usuarios (Versión Delta/Echo) ---
+// --- Gestión de Usuarios (Versión Delta) ---
 
-// Mostrar lista de todos los usuarios
 exports.listUsers = async (req, res) => {
   try {
     const users = await User.findAll({ 
       order: [['username', 'ASC']],
-      attributes: ['id', 'username', 'name', 'bookingEmail', 'isAdmin', 'mustChangePassword', 'mfaEnabled']
+      attributes: ['id', 'username', 'name', 'bookingEmail', 'isAdmin', 'mustChangePassword', 'mfaEnabled', 'mustConfigureMfa']
     });
     res.render('admin/users', { users, message: req.query.message });
   } catch (error) {
@@ -26,7 +23,6 @@ exports.listUsers = async (req, res) => {
   }
 };
 
-// Mostrar formulario para crear o editar usuario
 exports.showUserForm = async (req, res) => {
   try {
     const userId = req.params.id;
@@ -40,7 +36,6 @@ exports.showUserForm = async (req, res) => {
   }
 };
 
-// Crear nuevo usuario
 exports.createUser = async (req, res) => {
   const { username, password, name, bookingEmail, isAdmin } = req.body;
   
@@ -67,7 +62,6 @@ exports.createUser = async (req, res) => {
   }
 };
 
-// Actualizar usuario existente
 exports.updateUser = async (req, res) => {
   const userId = req.params.id;
   const { username, name, bookingEmail, isAdmin } = req.body;
@@ -93,7 +87,6 @@ exports.updateUser = async (req, res) => {
   }
 };
 
-// Eliminar usuario
 exports.deleteUser = async (req, res) => {
   const userId = req.params.id;
   if (req.session.userId == userId) {
@@ -109,16 +102,15 @@ exports.deleteUser = async (req, res) => {
 
 // --- Gestión de Contraseñas (Versión Echo) ---
 
-// Resetea la contraseña a 'password123'
 exports.resetUserPassword = async (req, res) => {
   const userId = req.params.id;
-  const newPassword = 'password123'; // Contraseña temporal
+  const newPassword = 'password123'; 
   try {
     const user = await User.findByPk(userId);
     if (!user) return res.status(404).send('Usuario no encontrado');
 
     user.passwordHash = await bcrypt.hash(newPassword, parseInt(process.env.SALT_ROUNDS, 10));
-    user.mustChangePassword = true; // Forzar cambio
+    user.mustChangePassword = true; 
     await user.save();
 
     res.redirect(`/admin/users?message=Contraseña de ${user.username} reseteada a "${newPassword}"`);
@@ -127,7 +119,6 @@ exports.resetUserPassword = async (req, res) => {
   }
 };
 
-// Muestra el formulario para que un admin cambie la contraseña de un usuario.
 exports.showChangePasswordForm = async (req, res) => {
   try {
     const user = await User.findByPk(req.params.id);
@@ -144,7 +135,6 @@ exports.showChangePasswordForm = async (req, res) => {
   }
 };
 
-// Procesa el cambio de contraseña realizado por un admin.
 exports.changeUserPassword = async (req, res) => {
   const { newPassword, confirmPassword } = req.body;
   const userId = req.params.id;
@@ -179,12 +169,8 @@ exports.changeUserPassword = async (req, res) => {
   }
 };
 
-// --- Gestión de MFA (Versión Foxtrot) ---
+// --- Gestión de MFA (Versión Foxtrot/Hotel) ---
 
-/**
- * POST /admin/users/disable-mfa/:id
- * Permite a un admin forzar la desactivación de MFA para un usuario.
- */
 exports.adminDisableMfa = async (req, res) => {
   const userId = req.params.id;
   const adminUsername = req.session.user.username;
@@ -197,6 +183,38 @@ exports.adminDisableMfa = async (req, res) => {
 
     await User.update({
       mfaEnabled: false,
+      mfaSecret: null,
+      mustConfigureMfa: false 
+    }, {
+      where: { id: userId }
+    });
+
+    await TrustedDevice.destroy({
+      where: { userId: userId }
+    });
+
+    logDebug(2, `[Admin] ${adminUsername} ha DESACTIVADO el MFA para ${user.username} (ID: ${userId})`);
+    res.redirect(`/admin/users?message=MFA desactivado para ${user.username}`);
+
+  } catch (error) {
+    logDebug(1, `[Admin] Error al desactivar MFA para ${userId}:`, error.message);
+    res.redirect('/admin/users?message=' + encodeURIComponent(`Error al desactivar MFA: ${error.message}`));
+  }
+};
+
+exports.adminForceMfaSetup = async (req, res) => {
+  const userId = req.params.id;
+  const adminUsername = req.session.user.username;
+
+  try {
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.redirect('/admin/users?message=Usuario no encontrado');
+    }
+
+    await User.update({
+      mustConfigureMfa: true,
+      mfaEnabled: false,
       mfaSecret: null
     }, {
       where: { id: userId }
@@ -206,21 +224,17 @@ exports.adminDisableMfa = async (req, res) => {
       where: { userId: userId }
     });
 
-    logDebug(2, `[Admin] ${adminUsername} ha desactivado el MFA para ${user.username} (ID: ${userId})`);
-    res.redirect(`/admin/users?message=MFA desactivado para ${user.username}`);
+    logDebug(2, `[Admin] ${adminUsername} ha FORZADO la (re)configuración de MFA para ${user.username} (ID: ${userId})`);
+    res.redirect(`/admin/users?message=Se ha forzado la configuración de MFA para ${user.username}`);
 
   } catch (error) {
-    logDebug(1, `[Admin] Error al desactivar MFA para ${userId}:`, error.message);
-    res.redirect('/admin/users?message=' + encodeURIComponent(`Error al desactivar MFA: ${error.message}`));
+    logDebug(1, `[Admin] Error al forzar MFA para ${userId}:`, error.message);
+    res.redirect('/admin/users?message=' + encodeURIComponent(`Error al forzar MFA: ${error.message}`));
   }
 };
 
-// --- ¡NUEVO! Gestión de Configuración (Versión Golf) ---
+// --- Gestión de Configuración (Versión Golf) ---
 
-/**
- * GET /admin/settings
- * Muestra la página de configuración del sistema.
- */
 exports.showSettings = (req, res) => {
   try {
     // Obtener el valor actual desde la caché
@@ -239,34 +253,28 @@ exports.showSettings = (req, res) => {
   }
 };
 
-/**
- * POST /admin/settings
- * Actualiza la configuración del sistema.
- */
 exports.saveSettings = async (req, res) => {
   const { trusted_device_days } = req.body;
   
   try {
-    // Validar (simple)
     const days = parseInt(trusted_device_days, 10);
     if (isNaN(days) || days < 1 || days > 365) {
       throw new Error('Los días deben ser un número entre 1 y 365.');
     }
 
-    // Guardar la configuración (en BDD y caché)
     await updateSetting('trusted_device_days', days.toString());
 
     res.redirect('/admin/settings?message=Configuración guardada con éxito');
 
   } catch (error) {
     logDebug(1, '[Admin] Error al guardar configuraciones:', error.message);
-    const trustedDays = getSetting('trusted_device_days', '30'); // Obtener valor actual
+    const trustedDays = getSetting('trusted_device_days', '30'); 
     res.render('admin/settings', {
       settings: {
-        trusted_device_days: trustedDays // Enviar el valor actual
+        trusted_device_days: trustedDays 
       },
       message: null,
-      error: error.message // Mostrar el error en la página
+      error: error.message
     });
   }
 };

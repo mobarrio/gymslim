@@ -1,4 +1,4 @@
-// Fichero: server.js (Versión Golf - MODIFICADO)
+// Fichero: server.js (Versión Hotel - MODIFICADO)
 require('dotenv').config(); // Cargar .env primero
 const express = require('express');
 const session = require('express-session');
@@ -10,9 +10,8 @@ const { sequelize, initDatabase, User, Session } = require('./database');
 const { logDebug, DEBUG_LEVEL } = require('./utils/logger'); // Importar logger
 const SequelizeStore = require('connect-session-sequelize')(session.Store);
 
-// --- ¡NUEVO! Importar el cargador de caché ---
+// Importar el cargador de caché (Versión Golf)
 const { loadSettings } = require('./utils/settingsCache');
-// --- FIN NUEVO ---
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -20,7 +19,7 @@ const PORT = process.env.PORT || 3000;
 // --- Configuración de Express ---
 app.use(express.json()); 
 app.use(express.urlencoded({ extended: true })); 
-app.use(cookieParser());
+app.use(cookieParser()); // (Versión Foxtrot)
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -28,7 +27,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Configuración de Sesión
 const sessionStore = new SequelizeStore({
   db: sequelize,
-  model: Session, 
+  model: Session, // (Corrección de arranque)
   table: 'Session'
 });
 
@@ -43,7 +42,7 @@ app.use(session({
   }
 }));
 
-// --- Middleware Global ---
+// --- Middleware Global (MODIFICADO) ---
 app.use(async (req, res, next) => {
   res.locals.DEBUG_LEVEL = DEBUG_LEVEL;
   if (!req.session.userId) {
@@ -52,17 +51,23 @@ app.use(async (req, res, next) => {
   try {
     const user = await User.findByPk(req.session.userId);
     if (user) {
+      // Poner datos clave a disposición de todas las vistas (EJS)
       res.locals.user = {
         id: user.id,
         username: user.username,
         name: user.name, 
         bookingEmail: user.bookingEmail, 
         isAdmin: user.isAdmin,
-        mfaEnabled: user.mfaEnabled 
+        mfaEnabled: user.mfaEnabled,
+        mustConfigureMfa: user.mustConfigureMfa // <-- ¡CAMBIO AÑADIDO!
       };
+      
       res.locals.activeBookingEmail = user.bookingEmail; 
       req.session.mustChangePassword = user.mustChangePassword;
-      req.session.user = res.locals.user;
+      
+      // Actualizar datos de sesión
+      req.session.user = res.locals.user; // <-- El objeto user ya incluye el nuevo flag
+      
       logDebug(4, `[Session] Usuario ${user.username} cargado en res.locals`);
     } else {
       logDebug(2, `[Session] ID de sesión ${req.session.userId} no encontrado en BDD. Limpiando sesión.`);
@@ -94,16 +99,14 @@ app.all('*', (req, res) => {
   res.status(404).send('Ruta no encontrada');
 });
 
-// --- Iniciar Servidor ---
+// --- Iniciar Servidor (Corrección Definitiva) ---
 const startServer = async () => {
   try {
     // 1. Sincroniza BDD (User, ApiCache, Session, TrustedDevice, Setting)
     await initDatabase(); 
 
-    // --- ¡NUEVO! Cargar config en caché ---
     // 2. Carga la configuración (ej. '30' días) en la memoria
     await loadSettings();
-    // --- FIN NUEVO ---
     
     // 3. Iniciar el servidor
     app.listen(PORT, () => {

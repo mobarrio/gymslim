@@ -1,8 +1,6 @@
-// Fichero: controllers/profileController.js (CORREGIDO)
-const { User, TrustedDevice } = require('../database');
+// Fichero: controllers/profileController.js (Versión Hotel - MODIFICADO)
+const { User, TrustedDevice } = require('../database'); 
 const bcrypt = require('bcrypt');
-
-// --- ¡¡¡ESTA ES LA LÍNEA QUE FALTABA!!! ---
 const { logDebug } = require('../utils/logger');
 
 // Importar bibliotecas de MFA
@@ -16,12 +14,10 @@ const { encrypt, decrypt } = require('../utils/encryption');
  * Muestra la página de edición de perfil.
  */
 exports.showProfile = (req, res) => {
-  // El middleware global ya cargó 'user' en res.locals
-  
   res.render('profile/edit', {
     user: res.locals.user,
-    // Pasamos el estado de MFA (true/false) a la vista
-    mfaEnabled: res.locals.user.mfaEnabled, 
+    mfaEnabled: res.locals.user.mfaEnabled,
+    mustConfigureMfa: res.locals.user.mustConfigureMfa, // <-- ¡CAMBIO AÑADIDO!
     message: req.query.message || null,
     error: req.query.error || null,
     detailsError: req.query.detailsError || null,
@@ -30,8 +26,7 @@ exports.showProfile = (req, res) => {
 };
 
 /**
- * POST /profile/details
- * (Esta función existe de la Versión Delta, la mantenemos)
+ * POST /profile/details (Sin cambios)
  */
 exports.updateDetails = async (req, res) => {
   const { name, bookingEmail } = req.body;
@@ -59,8 +54,7 @@ exports.updateDetails = async (req, res) => {
 };
 
 /**
- * POST /profile/password
- * (Esta función existe de la Versión Delta, la mantenemos)
+ * POST /profile/password (Sin cambios)
  */
 exports.updatePassword = async (req, res) => {
   const { currentPassword, newPassword, confirmPassword } = req.body;
@@ -103,33 +97,21 @@ exports.updatePassword = async (req, res) => {
 };
 
 
-// --- Funciones de MFA (Versión Foxtrot) ---
+// --- Funciones de MFA ---
 
-/**
- * POST /profile/mfa/generate
- * Genera un nuevo secreto de MFA y devuelve un QR code.
- */
 exports.generateMfaSecret = async (req, res) => {
+  // ... (Lógica de generateMfaSecret sin cambios)
   try {
     const userEmail = res.locals.user.bookingEmail || res.locals.user.username;
-    const appName = 'GYMSLIM'; // Puedes cambiar esto
-
-    // 1. Generar el secreto
+    const appName = 'GYMSLIM'; 
     const secret = speakeasy.generateSecret({
-      name: `${appName} (${userEmail})`, // Ej: "GYMSLIM (user@test.com)"
+      name: `${appName} (${userEmail})`, 
       issuer: appName
     });
-
-    // 2. Guardar el secreto (base32) temporalmente en la sesión
     req.session.mfaTempSecret = secret.base32;
     logDebug(3, `[MFA] Secreto temporal (base32) generado para ${userEmail}`);
-
-    // 3. Generar el QR code como Data URL
     const qrCodeDataUrl = await qrcode.toDataURL(secret.otpauth_url);
-
-    // 4. Enviar el QR code al cliente (JSON)
     res.json({ qrCodeDataUrl: qrCodeDataUrl });
-
   } catch (error) {
     logDebug(1, '[MFA] Error al generar QR:', error.message);
     res.status(500).json({ message: 'Error al generar el código QR.' });
@@ -144,19 +126,18 @@ exports.generateMfaSecret = async (req, res) => {
 exports.verifyAndEnableMfa = async (req, res) => {
   const { token } = req.body;
   const userId = req.session.userId;
-  const tempSecret = req.session.mfaTempSecret; // Secreto base32 de la sesión
+  const tempSecret = req.session.mfaTempSecret;
 
   try {
     if (!tempSecret) {
       throw new Error('No se ha generado ningún secreto de MFA. Por favor, inténtelo de nuevo.');
     }
 
-    // 1. Verificar el token
     const isVerified = speakeasy.totp.verify({
       secret: tempSecret,
       encoding: 'base32',
       token: token,
-      window: 1 // Permitir una ventana de 1x30seg (pasado y futuro)
+      window: 1 
     });
 
     if (!isVerified) {
@@ -164,7 +145,6 @@ exports.verifyAndEnableMfa = async (req, res) => {
       throw new Error('El código no es válido. Asegúrese de que el reloj de su dispositivo esté sincronizado.');
     }
 
-    // 2. Verificación exitosa. Encriptar y guardar el secreto.
     const encryptedSecret = encrypt(tempSecret);
     if (!encryptedSecret) {
       throw new Error('Error crítico: No se pudo encriptar el secreto de MFA.');
@@ -173,14 +153,19 @@ exports.verifyAndEnableMfa = async (req, res) => {
     // 3. Actualizar el usuario en la BDD
     await User.update({
       mfaEnabled: true,
-      mfaSecret: encryptedSecret
+      mfaSecret: encryptedSecret,
+      mustConfigureMfa: false // <-- ¡CAMBIO CRUCIAL AÑADIDO! DESBLOQUEAR AL USUARIO
     }, {
       where: { id: userId }
     });
 
-    // 4. Limpiar el secreto temporal de la sesión
+    // 4. Actualizar la sesión (res.locals se actualiza con el middleware global)
+    req.session.user.mfaEnabled = true;
+    req.session.user.mustConfigureMfa = false;
+
+    // 5. Limpiar el secreto temporal de la sesión
     delete req.session.mfaTempSecret;
-    logDebug(2, `[MFA] MFA activado exitosamente para ${userId}`);
+    logDebug(2, `[MFA] MFA activado exitosamente (y desbloqueado) para ${userId}`);
 
     res.json({ message: '¡MFA activado con éxito!' });
 
@@ -193,15 +178,14 @@ exports.verifyAndEnableMfa = async (req, res) => {
 
 
 /**
- * POST /profile/mfa/disable
- * Desactiva el MFA para el usuario (requiere contraseña).
+ * POST /profile/mfa/disable (Sin cambios)
  */
 exports.disableMfa = async (req, res) => {
+  // ... (Lógica de disableMfa sin cambios)
   const { password } = req.body;
   const userId = req.session.userId;
 
   try {
-    // 1. Verificar la contraseña actual del usuario
     const user = await User.findByPk(userId);
     const isMatch = await bcrypt.compare(password, user.passwordHash);
 
@@ -210,7 +194,6 @@ exports.disableMfa = async (req, res) => {
       throw new Error('La contraseña actual es incorrecta.');
     }
 
-    // 2. Contraseña correcta. Desactivar MFA.
     await User.update({
       mfaEnabled: false,
       mfaSecret: null
@@ -218,7 +201,6 @@ exports.disableMfa = async (req, res) => {
       where: { id: userId }
     });
 
-    // 3. Eliminar todos los dispositivos de confianza asociados
     await TrustedDevice.destroy({
       where: { userId: userId }
     });
