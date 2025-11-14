@@ -3,52 +3,149 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin - Usuarios</title>
+    <title>Gestión de Usuarios</title>
     <link rel="stylesheet" href="/css/style.css">
-    <style> body { padding-top: 50px; } .container { max-width: 1100px; }</style>
+    <style>
+        body { padding-top: 70px; } /* Espacio para el nav fijo */
+        .container-admin { max-width: 950px; margin: 20px auto; }
+        
+        /* --- ACCIONES MODIFICADAS --- */
+        .table-actions {
+            display: flex;
+            flex-wrap: wrap; /* Permitir que los botones bajen si no caben */
+            gap: 5px; /* Espacio entre botones */
+        }
+        .btn-small {
+            padding: 4px 8px;
+            font-size: 12px;
+            text-decoration: none;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .btn-edit { background-color: #007bff; color: white; display: inline-block; } /* display para <a> */
+        .btn-change-pass { background-color: #17a2b8; color: white; display: inline-block; } /* display para <a> */
+        .btn-reset { background-color: #ffc107; color: #333; }
+        .btn-delete { background-color: #dc3545; color: white; }
+        
+        /* --- ¡NUEVO ESTILO! --- */
+        .btn-mfa-disable { background-color: #fd7e14; color: white; } /* Naranja */
+
+        .btn-secondary-link { margin-left: auto; }
+        
+        form[action*="delete"], 
+        form[action*="reset-pw"],
+        form[action*="disable-mfa"] { /* --- ¡NUEVO! --- */
+            display: inline-block;
+            margin: 0;
+        }
+        
+        /* --- COLUMNAS MODIFICADAS --- */
+        .col-username { width: 15%; }
+        .col-name { width: 20%; }
+        .col-email { width: 20%; }
+        .col-role { width: 10%; }
+        .col-mfa { width: 10%; } /* --- ¡NUEVA! --- */
+        .col-actions { width: 25%; }
+        /* --- FIN MODIFICACIONES --- */
+
+    </style>
 </head>
 <body>
     <%- include('../partials/_nav') %>
 
-    <div class="container">
-        <h1>Gestión de Usuarios</h1>
-        <p>
-            <a href="/admin/users/new" class="btn-primary" style="text-decoration: none;">+ Crear Nuevo Usuario</a>
-            <a href="/admin/emails" style="margin-left: 20px;">Gestionar Emails de Reserva</a>
-        </p>
-        
+    <div class="container-admin">
+        <div class="header">
+            <h1>Gestión de Usuarios</h1>
+            <a href="/admin/users/new" class="btn-primary">Crear Nuevo Usuario</a>
+        </div>
+
         <% if (locals.message) { %>
-            <div class="info-msg"><%= message %></div>
+            <div class="success-msg"><%= message %></div>
         <% } %>
 
+        <!-- Tabla de Usuarios (MODIFICADA) -->
         <table>
-            <tr>
-                <th>ID</th>
-                <th>Usuario</th>
-                <th>Admin</th>
-                <th>Debe Cambiar Pass</th>
-                <th style="width: 250px;">Acciones</th>
-            </tr>
-            <% users.forEach(u => { %>
+            <thead>
                 <tr>
-                    <td><%= u.id %></td>
-                    <td><%= u.username %></td>
-                    <td><%= u.isAdmin ? 'Sí' : 'No' %></td>
-                    <td><%= u.mustChangePassword ? 'Sí' : 'No' %></td>
-                    <td>
-                        <a href="/admin/users/<%= u.id %>/edit" style="margin-right: 10px;">Editar</a>
-                        <form action="/admin/users/<%= u.id %>/reset-pass" method="POST" style="display: inline-block; margin-right: 10px;">
-                            <button type="submit" class="sesion-link" onclick="return confirm('¿Resetear contraseña de <%= u.username %> a (password123)?')">Reset Pass</button>
-                        </form>
-                        <% if (user.id !== u.id) { %> <!-- No borrarse a sí mismo -->
-                            <form action="/admin/users/<%= u.id %>/delete" method="POST" style="display: inline-block;">
-                                <button type="submit" class="sesion-link" style="color: #dc3545;" onclick="return confirm('¿ELIMINAR a <%= u.username %>?')">Eliminar</button>
-                            </form>
-                        <% } %>
-                    </td>
+                    <th class="col-username">Usuario (Login)</th>
+                    <th class="col-name">Nombre</th>
+                    <th class="col-email">Email de Reserva</th>
+                    <th class="col-role">Rol</th>
+                    <th class="col-mfa">MFA</th> <!-- ¡NUEVA COLUMNA! -->
+                    <th class="col-actions">Acciones</th>
                 </tr>
-            <% }) %>
+            </thead>
+            <tbody>
+                <% users.forEach(user => { %>
+                    <tr>
+                        <td>
+                            <strong><%= user.username %></strong>
+                            <% if (user.mustChangePassword) { %>
+                                <br><small style="color: #e67e22;">(Reset Pass)</small>
+                            <% } %>
+                        </td>
+                        <td>
+                            <%= user.name || 'N/A' %>
+                        </td>
+                        <td>
+                            <%= user.bookingEmail || 'N/A' %>
+                        </td>
+                        <td>
+                            <%= user.isAdmin ? 'Admin' : 'Usuario' %>
+                        </td>
+                        
+                        <!-- --- ¡NUEVA CELDA! --- -->
+                        <td>
+                            <% if (user.mfaEnabled) { %>
+                                <span style="color: #28a745; font-weight: bold;">Activado</span>
+                            <% } else { %>
+                                <span style="color: #6c757d;">No</span>
+                            <% } %>
+                        </td>
+                        <!-- --- FIN NUEVA CELDA --- -->
+
+                        <td>
+                            <!-- --- SECCIÓN ACCIONES MODIFICADA --- -->
+                            <div class="table-actions">
+                                <!-- Botón Editar -->
+                                <a href="/admin/users/edit/<%= user.id %>" class="btn-small btn-edit">Editar</a>
+                                
+                                <!-- Botón Cambiar Pass -->
+                                <a href="/admin/users/change-password/<%= user.id %>" class="btn-small btn-change-pass">Cambiar Pass</a>
+
+                                <!-- Botón Reset Pass (Form) -->
+                                <form action="/admin/users/reset-pw/<%= user.id %>" method="POST" onsubmit="return confirm('¿Resetear contraseña de <%= user.username %> a "password123"?');">
+                                    <button type="submit" class="btn-small btn-reset">Reset Pass</button>
+                                </form>
+                                
+                                <!-- --- ¡NUEVO BOTÓN/FORM! --- -->
+                                <% if (user.mfaEnabled && user.id !== locals.user.id) { %>
+                                    <form action="/admin/users/disable-mfa/<%= user.id %>" method="POST" onsubmit="return confirm('¿Seguro que quieres DESACTIVAR el MFA para <%= user.username %>?');">
+                                        <button type="submit" class="btn-small btn-mfa-disable">Quitar MFA</button>
+                                    </form>
+                                <% } %>
+                                <!-- --- FIN NUEVO BOTÓN --- -->
+
+                                <!-- Botón Eliminar (Form) -->
+                                <% if (user.id !== locals.user.id) { %>
+                                    <form action="/admin/users/delete/<%= user.id %>" method="POST" onsubmit="return confirm('¡PELIGRO! ¿Estás seguro de que quieres ELIMINAR a <%= user.username %>?');">
+                                        <button type="submit" class="btn-small btn-delete">Eliminar</button>
+                                    </form>
+                                <% } %>
+                            </div>
+                            <!-- --- FIN DE LA SECCIÓN MODIFICADA --- -->
+                        </td>
+                    </tr>
+                <% }) %>
+            </tbody>
         </table>
+
     </div>
+    
+    <!-- Script (para el nav) -->
+    <script src="/js/main.js"></script>
+    
 </body>
 </html>

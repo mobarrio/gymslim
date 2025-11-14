@@ -1,20 +1,25 @@
-const { User, BookingEmail, sequelize } = require('../database');
+// Fichero: controllers/adminController.js (Versión Golf - MODIFICADO)
+const { User, sequelize, TrustedDevice } = require('../database'); 
 const bcrypt = require('bcrypt');
-// --- CAMBIO AQUÍ ---
-// Importar el logger para que funcione
-const { logDebug } = require('../utils/logger');
+const { logDebug } = require('../utils/logger'); // Importar logger
+
+// --- ¡NUEVO! Importar el caché de settings ---
+const { getSetting, updateSetting } = require('../utils/settingsCache');
 
 // --- Dashboard ---
 exports.showDashboard = (req, res) => {
-  res.redirect('/admin/users'); // Por ahora, redirige a la lista de usuarios
+  res.redirect('/admin/users'); // Redirige a la lista de usuarios
 };
 
-// --- Gestión de Usuarios ---
+// --- Gestión de Usuarios (Versión Delta/Echo) ---
 
 // Mostrar lista de todos los usuarios
 exports.listUsers = async (req, res) => {
   try {
-    const users = await User.findAll({ order: [['username', 'ASC']] });
+    const users = await User.findAll({ 
+      order: [['username', 'ASC']],
+      attributes: ['id', 'username', 'name', 'bookingEmail', 'isAdmin', 'mustChangePassword', 'mfaEnabled']
+    });
     res.render('admin/users', { users, message: req.query.message });
   } catch (error) {
     res.status(500).send('Error al listar usuarios: ' + error.message);
@@ -37,7 +42,8 @@ exports.showUserForm = async (req, res) => {
 
 // Crear nuevo usuario
 exports.createUser = async (req, res) => {
-  const { username, password, isAdmin } = req.body;
+  const { username, password, name, bookingEmail, isAdmin } = req.body;
+  
   if (!username || !password) {
     return res.render('admin/user-form', { user: null, error: 'Usuario y contraseña son requeridos.' });
   }
@@ -46,55 +52,50 @@ exports.createUser = async (req, res) => {
     await User.create({
       username,
       passwordHash,
-      isAdmin: isAdmin === 'on', // 'on' si el checkbox está marcado
-      mustChangePassword: true // Forzar cambio de pass al crear
+      name: name || null, 
+      bookingEmail: bookingEmail || null, 
+      isAdmin: isAdmin === 'on', 
+      mustChangePassword: true 
     });
     res.redirect('/admin/users?message=Usuario creado con éxito');
   } catch (error) {
-    res.render('admin/user-form', { user: null, error: 'Error al crear usuario: ' + error.message });
+    logDebug(1, '[Admin] Error creando usuario:', error.message);
+    res.render('admin/user-form', { 
+      user: { username, name, bookingEmail, isAdmin }, 
+      error: 'Error al crear usuario: ' + error.message 
+    });
   }
 };
 
 // Actualizar usuario existente
 exports.updateUser = async (req, res) => {
   const userId = req.params.id;
-  const { username, isAdmin } = req.body;
+  const { username, name, bookingEmail, isAdmin } = req.body;
   try {
     const user = await User.findByPk(userId);
     if (!user) return res.status(404).send('Usuario no encontrado');
 
     user.username = username;
+    user.name = name;
+    user.bookingEmail = bookingEmail;
     user.isAdmin = isAdmin === 'on';
+    
     await user.save();
     
     res.redirect('/admin/users?message=Usuario actualizado');
   } catch (error) {
-    res.render('admin/user-form', { user: req.body, error: 'Error al actualizar: ' + error.message });
-  }
-};
-
-// Resetear contraseña de un usuario
-exports.resetUserPassword = async (req, res) => {
-  const userId = req.params.id;
-  const newPassword = 'password123'; // Contraseña temporal
-  try {
-    const user = await User.findByPk(userId);
-    if (!user) return res.status(4404).send('Usuario no encontrado');
-
-    user.passwordHash = await bcrypt.hash(newPassword, parseInt(process.env.SALT_ROUNDS, 10));
-    user.mustChangePassword = true; // Forzar cambio
-    await user.save();
-
-    res.redirect(`/admin/users?message=Contraseña de ${user.username} reseteada a "${newPassword}"`);
-  } catch (error) {
-    res.status(500).send('Error al resetear contraseña: ' + error.message);
+    logDebug(1, `[Admin] Error actualizando usuario ${userId}:`, error.message);
+    req.body.id = userId; 
+    res.render('admin/user-form', { 
+      user: req.body, 
+      error: 'Error al actualizar: ' + error.message 
+    });
   }
 };
 
 // Eliminar usuario
 exports.deleteUser = async (req, res) => {
   const userId = req.params.id;
-  // Evitar que el admin se borre a sí mismo
   if (req.session.userId == userId) {
     return res.redirect('/admin/users?message=No puedes eliminar tu propia cuenta');
   }
@@ -106,113 +107,166 @@ exports.deleteUser = async (req, res) => {
   }
 };
 
+// --- Gestión de Contraseñas (Versión Echo) ---
 
-// --- Gestión de Emails de Reserva ---
-
-// Listar todos los emails
-exports.listEmails = async (req, res) => {
+// Resetea la contraseña a 'password123'
+exports.resetUserPassword = async (req, res) => {
+  const userId = req.params.id;
+  const newPassword = 'password123'; // Contraseña temporal
   try {
-    const emails = await BookingEmail.findAll({ order: [['isDefault', 'DESC'], ['email', 'ASC']] });
-    res.render('admin/emails', { emails, message: req.query.message, error: null });
+    const user = await User.findByPk(userId);
+    if (!user) return res.status(404).send('Usuario no encontrado');
+
+    user.passwordHash = await bcrypt.hash(newPassword, parseInt(process.env.SALT_ROUNDS, 10));
+    user.mustChangePassword = true; // Forzar cambio
+    await user.save();
+
+    res.redirect(`/admin/users?message=Contraseña de ${user.username} reseteada a "${newPassword}"`);
   } catch (error) {
-    res.status(500).send('Error al listar emails: ' + error.message);
+    res.status(500).send('Error al resetear contraseña: ' + error.message);
   }
 };
 
-// Crear nuevo email
-exports.createEmail = async (req, res) => {
-  const { email } = req.body;
+// Muestra el formulario para que un admin cambie la contraseña de un usuario.
+exports.showChangePasswordForm = async (req, res) => {
   try {
-    if (!email) {
-      throw new Error('El email no puede estar vacío.');
+    const user = await User.findByPk(req.params.id);
+    if (!user) {
+      return res.redirect('/admin/users?message=Usuario no encontrado');
     }
-    await BookingEmail.create({ email, isDefault: false });
-    res.redirect('/admin/emails?message=Email añadido');
-  } catch (error) {
-    const emails = await BookingEmail.findAll();
-    res.render('admin/emails', { emails, message: null, error: 'Error al crear email: ' + error.message });
-  }
-};
-
-// Establecer un email como default (y quitar el anterior)
-exports.setDefaultEmail = async (req, res) => {
-  const emailId = req.params.id;
-  const t = await sequelize.transaction(); // Usar transacción
-  try {
-    // 1. Quitar el default actual
-    await BookingEmail.update({ isDefault: false }, { where: { isDefault: true }, transaction: t });
-    // 2. Poner el nuevo default
-    await BookingEmail.update({ isDefault: true }, { where: { id: emailId }, transaction: t });
-    
-    await t.commit(); // Confirmar transacción
-    res.redirect('/admin/emails?message=Email por defecto actualizado');
-  } catch (error) {
-    await t.rollback(); // Deshacer en caso de error
-    res.redirect('/admin/emails?message=Error al actualizar default');
-  }
-};
-
-// Eliminar un email
-exports.deleteEmail = async (req, res) => {
-  const emailId = req.params.id;
-  try {
-    const email = await BookingEmail.findByPk(emailId);
-    // No permitir borrar el email por defecto
-    if (email.isDefault) {
-      return res.redirect('/admin/emails?message=No se puede eliminar el email por defecto.');
-    }
-    await email.destroy();
-    res.redirect('/admin/emails?message=Email eliminado');
-  } catch (error) {
-    res.status(500).send('Error al eliminar email: ' + error.message);
-  }
-};
-
-// Mostrar página para seleccionar email activo
-exports.showEmailSelector = async (req, res) => {
-  try {
-    // Guardar la página anterior para volver a ella
-    req.session.lastAppPage = req.get('Referer') || '/list?range_key=today';
-
-    const allEmails = await BookingEmail.findAll({ order: [['email', 'ASC']] });
-    res.render('admin/emails-select', { 
-      allEmails: allEmails,
-      currentEmailId: res.locals.user.activeBookingEmailId,
-      currentEmail: res.locals.activeBookingEmail
+    res.render('admin/change-password', {
+      user: user,
+      error: null,
+      message: null
     });
   } catch (error) {
-    res.status(500).send('Error al cargar emails: ' + error.message);
+    res.redirect('/admin/users?message=Error: ' + error.message);
   }
 };
 
-// Procesar la selección del email activo
-exports.selectActiveEmail = async (req, res) => {
-  const { emailId } = req.body; // Cambiado a emailId
-  const userId = req.session.userId;
+// Procesa el cambio de contraseña realizado por un admin.
+exports.changeUserPassword = async (req, res) => {
+  const { newPassword, confirmPassword } = req.body;
+  const userId = req.params.id;
+  const user = await User.findByPk(userId);
 
   try {
-    // Validar que el email existe en la BDD
-    const emailToSet = await BookingEmail.findByPk(emailId);
-    
-    if (emailToSet) {
-      // Asignar el emailId al usuario en la BDD
-      await User.update({ activeBookingEmailId: emailToSet.id }, { where: { id: userId } });
-      
-      // Actualizar la sesión
-      req.session.activeBookingEmailId = emailToSet.id;
-      if (res.locals.user) { // Actualizar res.locals si existe
-         res.locals.user.activeBookingEmailId = emailToSet.id;
-      }
-
-      logDebug(2, `[Session] Usuario ${req.session.user.username} cambió email activo a: ${emailToSet.email}`);
-    } else {
-      logDebug(1, `[Session] Intento de cambiar a emailId no válido: ${emailId}`);
+    if (!newPassword || newPassword.length < 6) {
+      throw new Error('La contraseña debe tener al menos 6 caracteres.');
     }
+    if (newPassword !== confirmPassword) {
+      throw new Error('Las contraseñas no coinciden.');
+    }
+
+    const newPasswordHash = await bcrypt.hash(newPassword, parseInt(process.env.SALT_ROUNDS, 10));
+    
+    await User.update({
+      passwordHash: newPasswordHash,
+      mustChangePassword: false 
+    }, {
+      where: { id: userId }
+    });
+
+    logDebug(2, `[Admin] El admin ${req.session.user.username} cambió la contraseña del usuario ${user.username}`);
+    res.redirect(`/admin/users?message=Contraseña de ${user.username} actualizada con éxito`);
+
   } catch (error) {
-     logDebug(1, `[Session] Error al cambiar email activo: ${error.message}`);
+    logDebug(1, `[Admin] Error cambiando contraseña de ${user.username}:`, error.message);
+    res.render('admin/change-password', {
+      user: user,
+      error: error.message 
+    });
   }
+};
+
+// --- Gestión de MFA (Versión Foxtrot) ---
+
+/**
+ * POST /admin/users/disable-mfa/:id
+ * Permite a un admin forzar la desactivación de MFA para un usuario.
+ */
+exports.adminDisableMfa = async (req, res) => {
+  const userId = req.params.id;
+  const adminUsername = req.session.user.username;
+
+  try {
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.redirect('/admin/users?message=Usuario no encontrado');
+    }
+
+    await User.update({
+      mfaEnabled: false,
+      mfaSecret: null
+    }, {
+      where: { id: userId }
+    });
+
+    await TrustedDevice.destroy({
+      where: { userId: userId }
+    });
+
+    logDebug(2, `[Admin] ${adminUsername} ha desactivado el MFA para ${user.username} (ID: ${userId})`);
+    res.redirect(`/admin/users?message=MFA desactivado para ${user.username}`);
+
+  } catch (error) {
+    logDebug(1, `[Admin] Error al desactivar MFA para ${userId}:`, error.message);
+    res.redirect('/admin/users?message=' + encodeURIComponent(`Error al desactivar MFA: ${error.message}`));
+  }
+};
+
+// --- ¡NUEVO! Gestión de Configuración (Versión Golf) ---
+
+/**
+ * GET /admin/settings
+ * Muestra la página de configuración del sistema.
+ */
+exports.showSettings = (req, res) => {
+  try {
+    // Obtener el valor actual desde la caché
+    const trustedDays = getSetting('trusted_device_days', '30');
+    
+    res.render('admin/settings', {
+      settings: {
+        trusted_device_days: trustedDays
+      },
+      message: req.query.message || null,
+      error: req.query.error || null
+    });
+  } catch (error) {
+    logDebug(1, '[Admin] Error al mostrar configuraciones:', error.message);
+    res.redirect('/admin/users?message=Error al cargar la configuración');
+  }
+};
+
+/**
+ * POST /admin/settings
+ * Actualiza la configuración del sistema.
+ */
+exports.saveSettings = async (req, res) => {
+  const { trusted_device_days } = req.body;
   
-  // Redirigir a la última página de la app (ej. /horario o /list)
-  // --- CAMBIO AQUÍ ---
-  res.redirect(req.session.lastAppPage || '/list?range_key=today');
+  try {
+    // Validar (simple)
+    const days = parseInt(trusted_device_days, 10);
+    if (isNaN(days) || days < 1 || days > 365) {
+      throw new Error('Los días deben ser un número entre 1 y 365.');
+    }
+
+    // Guardar la configuración (en BDD y caché)
+    await updateSetting('trusted_device_days', days.toString());
+
+    res.redirect('/admin/settings?message=Configuración guardada con éxito');
+
+  } catch (error) {
+    logDebug(1, '[Admin] Error al guardar configuraciones:', error.message);
+    const trustedDays = getSetting('trusted_device_days', '30'); // Obtener valor actual
+    res.render('admin/settings', {
+      settings: {
+        trusted_device_days: trustedDays // Enviar el valor actual
+      },
+      message: null,
+      error: error.message // Mostrar el error en la página
+    });
+  }
 };

@@ -1,21 +1,35 @@
+// Fichero: database.js (Versión Golf - MODIFICADO)
 const { Sequelize, DataTypes } = require('sequelize');
 const bcrypt = require('bcrypt');
+const { logDebug } = require('./utils/logger'); // Importar logger
+const session = require('express-session');
+const SequelizeStore = require('connect-session-sequelize')(session.Store);
 
-// Configura la conexión a la base de datos SQLite
 const sequelize = new Sequelize({
   dialect: 'sqlite',
   storage: process.env.DB_STORAGE || 'database.db',
-  logging: (msg) => logDebug(4, '[DB]', msg) // Log BDD si DEBUG_LEVEL >= 4
+  logging: (msg) => logDebug(4, '[DB]', msg)
 });
 
 // --- Definición de Modelos ---
 
-// Modelo de Usuario
+// Modelo de Usuario (Sin cambios)
 const User = sequelize.define('User', {
   username: {
     type: DataTypes.STRING,
     allowNull: false,
     unique: true
+  },
+  name: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  bookingEmail: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    validate: {
+      isEmail: true
+    }
   },
   passwordHash: {
     type: DataTypes.STRING,
@@ -28,88 +42,140 @@ const User = sequelize.define('User', {
   isAdmin: {
     type: DataTypes.BOOLEAN,
     defaultValue: false
+  },
+  mfaEnabled: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
+  mfaSecret: {
+    type: DataTypes.STRING,
+    allowNull: true
   }
 });
 
-// Modelo para la Caché de API
-// Guardamos la respuesta JSON completa como texto
+// Modelo para la Caché de API (Sin cambios)
 const ApiCache = sequelize.define('ApiCache', {
   cacheKey: {
     type: DataTypes.STRING,
     primaryKey: true
   },
   data: {
-    type: DataTypes.TEXT, // Almacena el JSON como string
+    type: DataTypes.TEXT,
     allowNull: false
   },
   expiresAt: {
-    type: DataTypes.DATE, // Para invalidar la caché
-    allowNull: false
+    type: DataTypes.DATE,
   }
 });
 
-// Modelo para los Emails de Reserva
-const BookingEmail = sequelize.define('BookingEmail', {
-  email: {
+// Modelo de Sesión (Sin cambios)
+const Session = sequelize.define('Session', {
+  sid: {
+    type: DataTypes.STRING,
+    primaryKey: true,
+  },
+  userId: DataTypes.STRING,
+  expires: DataTypes.DATE,
+  data: DataTypes.TEXT,
+});
+
+// Modelo de Dispositivos de Confianza (Sin cambios)
+const TrustedDevice = sequelize.define('TrustedDevice', {
+  id: {
+    type: DataTypes.INTEGER,
+    primaryKey: true,
+    autoIncrement: true
+  },
+  userId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    references: {
+      model: User,
+      key: 'id'
+    }
+  },
+  token: {
     type: DataTypes.STRING,
     allowNull: false,
     unique: true
   },
-  isDefault: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false
+  userAgent: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  expiresAt: {
+    type: DataTypes.DATE,
+    allowNull: false
   }
 });
 
-// --- Sincronización e Inicialización ---
-// Función de logger simple (ya que el logger completo está en server.js)
-function logDebug(level, ...args) {
-  if ((process.env.DEBUG_LEVEL || 0) >= level) {
-    console.log(...args);
+// --- ¡NUEVO MODELO! (Configuración) ---
+const Setting = sequelize.define('Setting', {
+  key: {
+    type: DataTypes.STRING,
+    primaryKey: true,
+  },
+  value: {
+    type: DataTypes.STRING,
+    allowNull: true,
   }
-}
+}, {
+  timestamps: false // No necesitamos createdAt/updatedAt
+});
+// --- FIN NUEVO MODELO ---
 
-// Función para inicializar la BDD (sincronizar y crear datos por defecto)
-async function initializeDatabase() {
+
+// --- Relaciones ---
+User.hasMany(TrustedDevice, { foreignKey: 'userId', onDelete: 'CASCADE' });
+TrustedDevice.belongsTo(User, { foreignKey: 'userId' });
+
+
+// --- Sincronización ---
+const initDatabase = async () => {
+  
+  // Sincronizamos explícitamente TODOS nuestros modelos
+  await User.sync({ alter: true });
+  await ApiCache.sync({ alter: true });
+  await Session.sync({ alter: true }); 
+  await TrustedDevice.sync({ alter: true });
+  await Setting.sync({ alter: true }); // <-- AÑADIDO
+
+  logDebug(1, 'Modelos [User], [ApiCache], [Session], [TrustedDevice] y [Setting] sincronizados.');
+
+  // Código de inicialización
   try {
-    // Sincroniza los modelos con la base de datos
-    await sequelize.sync({ force: false }); // force: false para no borrar datos
-    logDebug(1, '[DB] Base de datos sincronizada.');
-
-    // --- Seed: Crear usuario Admin por defecto si no existe ---
-    const userCount = await User.count();
-    if (userCount === 0) {
-      logDebug(1, '[DB] No hay usuarios. Creando usuario "admin"...');
+    // Inicializar Admin
+    const adminUser = await User.findOne({ where: { username: 'admin' } });
+    if (!adminUser) {
+      logDebug(1, 'No se encontró admin, creando usuario "admin" por defecto...');
       const passwordHash = await bcrypt.hash('admin', parseInt(process.env.SALT_ROUNDS, 10));
       await User.create({
         username: 'admin',
         passwordHash: passwordHash,
+        isAdmin: true,
         mustChangePassword: true,
-        isAdmin: true // El primer usuario es Admin
+        name: 'Administrador'
       });
-      logDebug(1, '[DB] Usuario "admin" (pass: "admin") creado.');
     }
 
-    // --- Seed: Crear email de reserva por defecto si no existe ---
-    const emailCount = await BookingEmail.count();
-    if (emailCount === 0) {
-      logDebug(1, '[DB] No hay emails de reserva. Creando email por defecto...');
-      await BookingEmail.create({
-        email: process.env.BOOKING_EMAIL || 'mariano.obarrio@gmail.com',
-        isDefault: true
-      });
-      logDebug(1, '[DB] Email de reserva por defecto creado.');
-    }
+    // --- ¡NUEVO! Inicializar Configuración por Defecto ---
+    await Setting.findOrCreate({
+      where: { key: 'trusted_device_days' },
+      defaults: { value: '30' } // Valor por defecto de 30 días
+    });
+    // --- FIN NUEVO ---
+
   } catch (error) {
-    console.error('[DB] Error al inicializar la base de datos:', error);
-    process.exit(1);
+    logDebug(1, 'Error al inicializar la base de datos:', error);
   }
-}
+};
 
 module.exports = {
   sequelize,
-  initializeDatabase,
+  initDatabase,
   User,
   ApiCache,
-  BookingEmail
+  Session,
+  TrustedDevice,
+  Setting // <-- Exportar el nuevo modelo
 };

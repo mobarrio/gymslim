@@ -1,99 +1,123 @@
-require('dotenv').config();
+// Fichero: server.js (Versión Golf - MODIFICADO)
+require('dotenv').config(); // Cargar .env primero
 const express = require('express');
 const session = require('express-session');
 const path = require('path');
-const { sequelize, initializeDatabase, BookingEmail } = require('./database');
-const { logDebug } = require('./utils/logger');
+const cookieParser = require('cookie-parser');
 
-// --- Configuración de Sesión con Sequelize ---
-// Almacenamos las sesiones en SQLite para que persistan
+// Importamos 'Session' ADEMÁS de los otros
+const { sequelize, initDatabase, User, Session } = require('./database'); 
+const { logDebug, DEBUG_LEVEL } = require('./utils/logger'); // Importar logger
 const SequelizeStore = require('connect-session-sequelize')(session.Store);
-const sessionStore = new SequelizeStore({
-  db: sequelize,
-});
 
-// --- Configuración Global ---
+// --- ¡NUEVO! Importar el cargador de caché ---
+const { loadSettings } = require('./utils/settingsCache');
+// --- FIN NUEVO ---
+
 const app = express();
 const PORT = process.env.PORT || 3000;
-const DEBUG_LEVEL = parseInt(process.env.DEBUG_LEVEL || 0, 10);
 
-// --- Middlewares Principales ---
-app.use(express.urlencoded({ extended: true })); // Parsear form-urlencoded
-app.use(express.json()); // Parsear JSON
-app.use(express.static(path.join(__dirname, 'public'))); // Servir ficheros estáticos
-
-// Configurar EJS como motor de vistas
+// --- Configuración de Express ---
+app.use(express.json()); 
+app.use(express.urlencoded({ extended: true })); 
+app.use(cookieParser());
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
+app.use(express.static(path.join(__dirname, 'public')));
 
-// Configurar Sesiones
-app.use(
-  session({
-    secret: process.env.SESSION_SECRET,
-    store: sessionStore,
-    resave: false,
-    saveUninitialized: false, // No guardar sesiones vacías
-    cookie: { httpOnly: true, secure: process.env.NODE_ENV === 'production' }
-  })
-);
+// Configuración de Sesión
+const sessionStore = new SequelizeStore({
+  db: sequelize,
+  model: Session, 
+  table: 'Session'
+});
 
-// --- Middleware Global de Vistas ---
-// Pasa datos útiles a *todas* las plantillas EJS
+app.use(session({
+  secret: process.env.SESSION_SECRET,
+  store: sessionStore,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production'
+  }
+}));
+
+// --- Middleware Global ---
 app.use(async (req, res, next) => {
-  // 1. Poner el usuario de la sesión en res.locals
-  res.locals.user = req.session.user || null;
-
-  // 2. Gestionar el email de reserva activo
-  if (req.session.isLoggedIn && !req.session.activeBookingEmail) {
-    // Si el usuario acaba de loguearse y no tiene email activo,
-    // buscamos el 'default' en la BDD
-    const defaultEmail = await BookingEmail.findOne({ where: { isDefault: true } });
-    req.session.activeBookingEmail = defaultEmail 
-      ? defaultEmail.email 
-      : (process.env.BOOKING_EMAIL || 'error@no.email'); // Fallback
+  res.locals.DEBUG_LEVEL = DEBUG_LEVEL;
+  if (!req.session.userId) {
+    return next();
   }
-  res.locals.activeBookingEmail = req.session.activeBookingEmail || null;
-  
-  // 3. Guardar la última página visitada (para redirecciones útiles)
-  if (req.method === 'GET' && !req.path.startsWith('/api') && !req.path.startsWith('/admin')) {
-    req.session.lastAppPage = req.originalUrl;
+  try {
+    const user = await User.findByPk(req.session.userId);
+    if (user) {
+      res.locals.user = {
+        id: user.id,
+        username: user.username,
+        name: user.name, 
+        bookingEmail: user.bookingEmail, 
+        isAdmin: user.isAdmin,
+        mfaEnabled: user.mfaEnabled 
+      };
+      res.locals.activeBookingEmail = user.bookingEmail; 
+      req.session.mustChangePassword = user.mustChangePassword;
+      req.session.user = res.locals.user;
+      logDebug(4, `[Session] Usuario ${user.username} cargado en res.locals`);
+    } else {
+      logDebug(2, `[Session] ID de sesión ${req.session.userId} no encontrado en BDD. Limpiando sesión.`);
+      req.session.destroy();
+    }
+  } catch (error) {
+    logDebug(1, '[Session] Error al cargar usuario en middleware:', error);
   }
-
   next();
 });
 
-// --- Carga de Rutas ---
-logDebug(3, 'Cargando rutas...');
-app.use('/', require('./routes/auth'));
-app.use('/', require('./routes/app'));
-app.use('/api', require('./routes/booking'));
-app.use('/admin', require('./routes/admin'));
+// --- Importar Rutas ---
+const authRoutes = require('./routes/auth');
+const appRoutes = require('./routes/app');
+const adminRoutes = require('./routes/admin');
+const bookingRoutes = require('./routes/booking');
+const profileRoutes = require('./routes/profile'); 
 
-// --- Ruta CATCH-ALL (404) ---
+// --- Usar Rutas ---
+app.use('/', authRoutes);
+app.use('/', appRoutes);
+app.use('/admin', adminRoutes);
+app.use('/api', bookingRoutes);
+app.use('/profile', profileRoutes);
+
+// Ruta Catch-all (404)
 app.all('*', (req, res) => {
-  logDebug(1, `[404] Ruta no definida: ${req.method} ${req.path}`);
+  logDebug(1, `[404] Ruta no encontrada: ${req.method} ${req.path}`);
   res.status(404).send('Ruta no encontrada');
 });
 
-// --- Arranque del Servidor ---
-async function startServer() {
+// --- Iniciar Servidor ---
+const startServer = async () => {
   try {
-    // 1. Sincroniza la BDD y crea datos por defecto
-    await initializeDatabase();
-    // 2. Sincroniza el almacén de sesiones
-    await sessionStore.sync();
-    logDebug(1, 'Almacén de sesiones sincronizado.');
-    // 3. Inicia el servidor
+    // 1. Sincroniza BDD (User, ApiCache, Session, TrustedDevice, Setting)
+    await initDatabase(); 
+
+    // --- ¡NUEVO! Cargar config en caché ---
+    // 2. Carga la configuración (ej. '30' días) en la memoria
+    await loadSettings();
+    // --- FIN NUEVO ---
+    
+    // 3. Iniciar el servidor
     app.listen(PORT, () => {
-      console.log(`Servidor Beta iniciado. Abre http://localhost:${PORT}`);
+      logDebug(1, `Servidor iniciado. Escuchando en http://localhost:${PORT}`);
       if (DEBUG_LEVEL > 0) {
         console.warn(`\n*** MODO DEBUG ${DEBUG_LEVEL} ACTIVADO ***\n`);
       }
     });
   } catch (error) {
-    console.error('Error fatal al iniciar el servidor:', error);
+    console.error("Error fatal al iniciar el servidor:", error);
     process.exit(1);
   }
-}
+};
 
 startServer();
+
+module.exports = { app };

@@ -1,27 +1,39 @@
+// Fichero: routes/admin.js (Versión Golf - MODIFICADO)
 const express = require('express');
 const router = express.Router();
-const { checkIsAdmin } = require('../middlewares/adminMiddleware');
 const adminController = require('../controllers/adminController');
+const { checkIsAdmin } = require('../middlewares/adminMiddleware');
 
-// --- Proteger TODAS las rutas de admin ---
+// Proteger TODAS las rutas de /admin
 router.use(checkIsAdmin);
 
-// --- Rutas de Gestión de Usuarios ---
-router.get('/', adminController.showDashboard); // Dashboard principal
-router.get('/users', adminController.listUsers);
-router.get('/users/new', adminController.showUserForm); // Mostrar form para crear
-router.post('/users/new', adminController.createUser);
-router.get('/users/:id/edit', adminController.showUserForm); // Mostrar form para editar
-router.post('/users/:id/edit', adminController.updateUser);
-router.post('/users/:id/reset-pass', adminController.resetUserPassword);
-router.post('/users/:id/delete', adminController.deleteUser);
+// --- Dashboard ---
+router.get('/', adminController.showDashboard);
 
-// --- Rutas de Gestión de Emails de Reserva ---
-router.get('/emails', adminController.listEmails);
-router.post('/emails/new', adminController.createEmail);
-router.post('/emails/:id/set-default', adminController.setDefaultEmail);
-router.post('/emails/:id/delete', adminController.deleteEmail);
-router.get('/emails/select', adminController.showEmailSelector); // Página para cambiar email activo
-router.post('/emails/select', adminController.selectActiveEmail); // Procesar cambio de email activo
+// --- Gestión de Usuarios (CRUD) ---
+router.get('/users', adminController.listUsers);
+router.get('/users/new', adminController.showUserForm);
+router.post('/users/new', adminController.createUser);
+router.get('/users/edit/:id', adminController.showUserForm);
+router.post('/users/edit/:id', adminController.updateUser);
+router.post('/users/delete/:id', adminController.deleteUser);
+
+// --- Gestión de Contraseñas (Versión Echo) ---
+router.post('/users/reset-pw/:id', adminController.resetUserPassword);
+router.get('/users/change-password/:id', adminController.showChangePasswordForm);
+router.post('/users/change-password/:id', adminController.changeUserPassword);
+
+// --- Gestión de MFA (Versión Foxtrot) ---
+router.post('/users/disable-mfa/:id', adminController.adminDisableMfa);
+
+
+// --- ¡NUEVO! Gestión de Configuración (Versión Golf) ---
+// Muestra la página de configuración
+router.get('/settings', adminController.showSettings);
+
+// Actualiza la configuración
+router.post('/settings', adminController.saveSettings);
+// --- FIN NUEVO ---
+
 
 module.exports = router;

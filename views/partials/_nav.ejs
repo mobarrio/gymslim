@@ -1,6 +1,6 @@
 <!-- 
   Barra de navegación dinámica.
-  Se incluye en: list.ejs, horario.ejs, y todas las páginas de admin.
+  Se incluye en: list.ejs, horario.ejs, profile/edit.ejs y todas las páginas de admin.
 -->
 <style>
   .main-nav {
@@ -22,10 +22,18 @@
   .main-nav a { color: #007bff; text-decoration: none; }
   .main-nav .nav-email { color: #555; }
   .main-nav .nav-email strong { color: #000; }
-  .main-nav .nav-email a { font-size: 12px; }
-  .main-nav .admin-link { font-weight: bold; color: #dc3545; }
+  .main-nav .nav-email a { font-size: 12px; text-decoration: underline; }
+  .main-nav .admin-link { 
+    font-weight: bold; 
+    color: #dc3545;
+    padding: 3px 6px;
+    border-radius: 4px;
+  }
+  .main-nav .admin-link:hover {
+    background-color: #f8d7da;
+  }
 
-  /* --- NUEVO: Estilos para el selector de fecha --- */
+  /* Estilos para el selector de fecha (de vCharly) */
   #nav-date-form {
     margin: 0;
   }
@@ -41,20 +49,15 @@
   #nav-date-select:hover {
     border-color: #999;
   }
-  /* --- Fin de nuevos estilos --- */
 </style>
 
 <nav class="main-nav">
   <div class="nav-group">
-    <strong>GYMSLIM (Charly)</strong>
+    <strong>GYMSLIM (Golf)</strong>
     
-    <!-- --- REEMPLAZADO: Enlace de Horario por Selector --- -->
+    <!-- Selector de Rango de Fechas (de vCharly) -->
     <form action="/list" method="GET" id="nav-date-form">
       <select name="range_key" id="nav-date-select">
-        <!-- 
-          'locals.range_key' es pasado desde el controlador (appController)
-          para saber qué opción marcar como seleccionada.
-        -->
         <option value="" disabled <%= !locals.range_key ? "selected" : "" %>>
           Seleccionar rango...
         </option>
@@ -74,22 +77,28 @@
           Rango Personalizado...
         </option>
       </select>
-      <!-- Botón oculto para que el form funcione sin JS (aunque onchange es JS) -->
       <button type="submit" style="display:none;"></button>
     </form>
-    <!-- --- Fin del reemplazo --- -->
 
+    <!-- --- SECCIÓN MODIFICADA (Versión Golf) --- -->
     <% if (user && user.isAdmin) { %>
-      <a href="/admin" class="admin-link">Admin</a>
+      <!-- Renombrado "Admin" a "Gestión" -->
+      <a href="/admin/users" class="admin-link">Gestión</a>
+      <!-- ¡NUEVO ENLACE! -->
+      <a href="/admin/settings" class="admin-link">Configuración</a>
     <% } %>
+    <!-- --- FIN DE LA SECCIÓN MODIFICADA --- -->
   </div>
 
   <% if (user) { %>
     <div class="nav-links">
+      
+      <!-- Enlace de Perfil (de vDelta) -->
       <div class="nav-email">
-        Email: <strong><%= activeBookingEmail || 'N/A' %></strong>
-        (<a href="/admin/emails/select">[Cambiar]</a>)
+        Email: <strong><%= user.bookingEmail || '(Sin email)' %></strong>
+        (<a href="/profile">[Mi Perfil]</a>)
       </div>
+
       <span><%= user.username %></span>
       <a href="/logout">Cerrar Sesión</a>
     </div>

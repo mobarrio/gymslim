@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuración del Sistema</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        body { padding-top: 70px; } /* Espacio para el nav fijo */
+        .container-admin {
+            max-width: 600px;
+            margin: 20px auto;
+        }
+    </style>
+</head>
+<body>
+    <%- include('../partials/_nav') %>
+
+    <div class="container-admin">
+        <h1>Configuración del Sistema</h1>
+
+        <form action="/admin/settings" method="POST" class="form-container">
+            
+            <% if (locals.message) { %>
+                <div class="success-msg"><%= message %></div>
+            <% } %>
+            <% if (locals.error) { %>
+                <div class="error-msg"><%= error %></div>
+            <% } %>
+
+            <h2>Seguridad (MFA)</h2>
+            <div>
+                <label for="trusted_device_days">Duración del "Dispositivo de Confianza" (días)</label>
+                <!-- 
+                  El controlador pasa 'settings.trusted_device_days' 
+                  y lo usamos para rellenar el valor actual.
+                -->
+                <input type="number" 
+                       id="trusted_device_days" 
+                       name="trusted_device_days" 
+                       value="<%= settings.trusted_device_days %>" 
+                       min="1" 
+                       max="365" 
+                       required>
+                <small>Tiempo (1-365 días) que un dispositivo será recordado antes de volver a pedir el código MFA.</small>
+            </div>
+            
+            <button type="submit" class="btn-primary">Guardar Configuración</button>
+        </form>
+
+    </div>
+
+    <!-- Script (para el nav) -->
+    <script src="/js/main.js"></script>
+
+</body>
+</html>
