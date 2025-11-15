@@ -1,5 +1,5 @@
-// Fichero: controllers/profileController.js (Versión India - MODIFICADO)
-const { User, TrustedDevice, FavoriteActivity } = require('../database'); // <-- ¡Importar FavoriteActivity!
+// Fichero: controllers/profileController.js (CORREGIDO)
+const { User, TrustedDevice, FavoriteActivity } = require('../database');
 const bcrypt = require('bcrypt');
 const { logDebug } = require('../utils/logger');
 
@@ -11,13 +11,15 @@ const { encrypt, decrypt } = require('../utils/encryption');
 
 /**
  * GET /profile
- * Muestra la página de edición de perfil. (Sin cambios)
+ * Muestra la página de edición de perfil.
  */
 exports.showProfile = (req, res) => {
+  const user = res.locals.user;
+  
   res.render('profile/edit', {
-    user: res.locals.user,
-    mfaEnabled: res.locals.user.mfaEnabled,
-    mustConfigureMfa: res.locals.user.mustConfigureMfa,
+    user: user,
+    mfaEnabled: user.mfaEnabled,
+    mustConfigureMfa: user.mustConfigureMfa,
     message: req.query.message || null,
     error: req.query.error || null,
     detailsError: req.query.detailsError || null,
@@ -26,7 +28,7 @@ exports.showProfile = (req, res) => {
 };
 
 /**
- * POST /profile/details (Sin cambios)
+ * POST /profile/details
  */
 exports.updateDetails = async (req, res) => {
   const { name, bookingEmail } = req.body;
@@ -54,7 +56,7 @@ exports.updateDetails = async (req, res) => {
 };
 
 /**
- * POST /profile/password (Sin cambios)
+ * POST /profile/password
  */
 exports.updatePassword = async (req, res) => {
   const { currentPassword, newPassword, confirmPassword } = req.body;
@@ -97,10 +99,9 @@ exports.updatePassword = async (req, res) => {
 };
 
 
-// --- Funciones de MFA (Sin cambios) ---
+// --- Funciones de MFA ---
 
 exports.generateMfaSecret = async (req, res) => {
-  // ... (Lógica de generateMfaSecret)
   try {
     const userEmail = res.locals.user.bookingEmail || res.locals.user.username;
     const appName = 'GYMSLIM';
@@ -116,7 +117,6 @@ exports.generateMfaSecret = async (req, res) => {
 };
 
 exports.verifyAndEnableMfa = async (req, res) => {
-  // ... (Lógica de verifyAndEnableMfa)
   const { token } = req.body;
   const userId = req.session.userId;
   const tempSecret = req.session.mfaTempSecret;
@@ -145,7 +145,6 @@ exports.verifyAndEnableMfa = async (req, res) => {
 };
 
 exports.disableMfa = async (req, res) => {
-  // ... (Lógica de disableMfa)
   const { password } = req.body;
   const userId = req.session.userId;
 
@@ -163,11 +162,11 @@ exports.disableMfa = async (req, res) => {
 
   } catch (error) {
     logDebug(1, `[MFA] Error al desactivar MFA para ${userId}:`, error.message);
-    res.status(400).json({ message: error.message });
+    res.status(400).json({ message: 'Error de MFA: ' + error.message });
   }
 };
 
-// --- ¡NUEVAS FUNCIONES! Gestión de Favoritas (Versión India) ---
+// --- Gestión de Favoritas (CORREGIDO) ---
 
 /**
  * GET /profile/favorites
@@ -182,7 +181,6 @@ exports.showFavoriteActivities = async (req, res) => {
             order: [['activityName', 'ASC']]
         });
         
-        // Convertimos el array de objetos en un array simple de strings
         const favorites = favoriteActivities.map(fa => fa.activityName);
 
         res.render('profile/favorites', {
@@ -198,9 +196,11 @@ exports.showFavoriteActivities = async (req, res) => {
 };
 
 /**
- * POST /profile/favorites
+ * POST /profile/favorites (CORREGIDO)
  * Añade o elimina una actividad de la lista de favoritos del usuario.
- * Esta ruta es llamada por el botón de la página /list.
+ * Esta ruta ahora maneja dos tipos de acciones:
+ * 1. 'add'/'remove' (Desde los iconos de corazón en /list, responde JSON)
+ * 2. 'add_master'/'remove_master' (Desde el formulario en /profile/favorites, responde REDIRECT)
  */
 exports.updateFavoriteActivity = async (req, res) => {
     const { activityName, action } = req.body;
@@ -211,28 +211,52 @@ exports.updateFavoriteActivity = async (req, res) => {
     }
 
     try {
-        if (action === 'add') {
-            // Añadir la actividad solo si no existe ya (para evitar duplicados)
+        // --- LÓGICA DE AÑADIR ---
+        if (action === 'add' || action === 'add_master') {
+            
             await FavoriteActivity.findOrCreate({
                 where: { userId: userId, activityName: activityName },
                 defaults: { userId: userId, activityName: activityName }
             });
             logDebug(3, `[Favorites] Añadida actividad: ${activityName} para ${userId}`);
-            return res.json({ message: 'Añadida a favoritos', added: true });
+            
+            // Responder según el origen
+            if (action === 'add') { // (Desde /list)
+                return res.json({ message: 'Añadida a favoritos', added: true });
+            } else { // (Desde /profile/favorites)
+                return res.redirect('/profile/favorites?message=Actividad añadida con éxito');
+            }
 
-        } else if (action === 'remove') {
-            // Eliminar la actividad
+        // --- LÓGICA DE ELIMINAR ---
+        } else if (action === 'remove' || action === 'remove_master') {
+            
             await FavoriteActivity.destroy({
                 where: { userId: userId, activityName: activityName }
             });
             logDebug(3, `[Favorites] Eliminada actividad: ${activityName} para ${userId}`);
-            return res.json({ message: 'Eliminada de favoritos', removed: true });
-        }
 
-        return res.status(400).json({ message: 'Acción no válida.' });
+            // Responder según el origen
+            if (action === 'remove') { // (Desde /list)
+                return res.json({ message: 'Eliminada de favoritos', removed: true });
+            } else { // (Desde /profile/favorites)
+                return res.redirect('/profile/favorites?message=Actividad eliminada con éxito');
+            }
+        }
+        
+        // --- Si la acción no coincide con ninguna ---
+        logDebug(1, `[Favorites] Acción no válida recibida: ${action}`);
+        if (action.includes('_master')) { // Error desde el formulario
+             return res.redirect('/profile/favorites?error=Acción no válida');
+        } else { // Error desde la API (iconos corazón)
+             return res.status(400).json({ message: 'Acción no válida.' });
+        }
 
     } catch (error) {
         logDebug(1, `[Favorites] Error al actualizar favoritas para ${userId}:`, error.message);
-        return res.status(500).json({ message: 'Error interno al procesar la solicitud.' });
+        if (action.includes('_master')) { // Error desde el formulario
+             return res.redirect('/profile/favorites?error=' + encodeURIComponent(error.message));
+        } else { // Error desde la API (iconos corazón)
+             return res.status(500).json({ message: 'Error interno al procesar la solicitud.' });
+        }
     }
 };
