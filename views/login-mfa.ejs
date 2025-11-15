@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verificación de Dos Pasos</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        body { 
+            display: grid; 
+            place-items: center; 
+            min-height: 90vh; 
+        } 
+        form { 
+            width: 320px; 
+        }
+        #token {
+            font-size: 1.5rem;
+            text-align: center;
+            letter-spacing: 5px;
+        }
+        .label-inline {
+            display: inline-block;
+            font-weight: normal;
+            margin-left: 5px;
+        }
+        .cancel-link {
+            display: block;
+            text-align: center;
+            margin-top: 15px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <form action="/login/mfa" method="POST" class="form-container">
+        <h2>Verificación Requerida</h2>
+        <p>Abre tu aplicación de autenticación e introduce el código de 6 dígitos.</p>
+        
+        <% if (locals.error) { %>
+            <div class="error-msg"><%= error %></div>
+        <% } %>
+
+        <div>
+            <label for="token">Código de 6 dígitos:</label>
+            <input type="text" id="token" name="token" 
+                   maxlength="6" 
+                   inputmode="numeric" 
+                   pattern="\d{6}" 
+                   autocomplete="one-time-code" 
+                   required 
+                   autofocus>
+        </div>
+
+        <div>
+            <input type="checkbox" id="trustDevice" name="trustDevice" value="true">
+            <!-- --- ¡CORRECCIÓN AÑADIDA AQUÍ! --- -->
+            <label for="trustDevice" class="label-inline">
+                Confiar en este dispositivo (<%= trustedDeviceDays %> días)
+            </label>
+            <!-- --- FIN CORRECCIÓN --- -->
+        </div>
+
+        <button type="submit" class="btn-primary">Verificar e Iniciar Sesión</button>
+        
+        <a href="/logout" class="cancel-link">Cancelar e ir a Login</a>
+    </form>
+</body>
+</html>

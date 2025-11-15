@@ -1,6 +1,4 @@
 // Fichero: utils/logger.js
-
-// Lee el nivel de debug desde las variables de entorno
 const DEBUG_LEVEL = parseInt(process.env.DEBUG_LEVEL || 0, 10);
 
 /**
@@ -8,13 +6,16 @@ const DEBUG_LEVEL = parseInt(process.env.DEBUG_LEVEL || 0, 10);
  */
 function logDebug(level, message, ...args) {
     if (DEBUG_LEVEL >= level) {
-        if (args.length > 0 && args[0] !== undefined) {
-             console.log(`[DEBUG ${level}] ${message}`, args);
+        if (args.length > 0) {
+            console.log(`[DEBUG ${level}] ${message}`);
+            args.forEach(arg => console.dir(arg, { depth: null }));
         } else {
-             console.log(`[DEBUG ${level}] ${message}`);
+            console.log(`[DEBUG ${level}] ${message}`);
         }
     }
 }
 
-// Exportamos la función y el nivel para que otros módulos los usen
-module.exports = { logDebug, DEBUG_LEVEL };
+module.exports = {
+  logDebug,
+  DEBUG_LEVEL
+};

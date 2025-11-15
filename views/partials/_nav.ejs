@@ -1,8 +1,6 @@
-<!-- 
-  Barra de navegación dinámica.
-  Se incluye en: list.ejs, horario.ejs, y todas las páginas de admin.
--->
+<!-- Fichero: views/partials/_nav.ejs (Versión Kilo - Diseño Minimalista 5.0: Perfil Reordenado) -->
 <style>
+  /* --- Estilos base (MFA & General) --- */
   .main-nav {
     display: flex;
     justify-content: space-between;
@@ -14,21 +12,92 @@
     top: 0;
     left: 0;
     width: 100%;
-    box-sizing: border-box; /* Asegura que el padding no afecte el width */
+    box-sizing: border-box;
     z-index: 100;
+    height: 60px; /* Altura fija */
   }
-  .main-nav .nav-group { display: flex; align-items: center; gap: 15px; }
-  .main-nav .nav-links { display: flex; align-items: center; gap: 15px; }
-  .main-nav a { color: #007bff; text-decoration: none; }
-  .main-nav .nav-email { color: #555; }
-  .main-nav .nav-email strong { color: #000; }
-  .main-nav .nav-email a { font-size: 12px; }
-  .main-nav .admin-link { font-weight: bold; color: #dc3545; }
+  
+  /* --- Contenedor de la izquierda (nav-group) --- */
+  .main-nav .nav-group { 
+    display: flex; 
+    align-items: center; 
+    /* Gap general entre todos los elementos de la izquierda */
+    gap: 15px; 
+    height: 100%;
+  }
+  
+  /* --- Contenedor de la derecha (nav-links) --- */
+  .main-nav .nav-links { 
+    display: flex; 
+    align-items: center; 
+    gap: 15px; /* Compacto: Solo Logout */
+  }
+  
+  /* --- Usuario y Perfil (Ahora en el nav-group) --- */
+  .user-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 15px;
+    color: #333;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 5px 8px;
+    border-radius: 6px;
+    transition: background-color 0.2s;
+  }
+  .user-info:hover {
+    background-color: #f0f0f0;
+  }
+  .user-info strong {
+    font-weight: 600;
+  }
+  
+  /* Iconos SVG */
+  .nav-icon {
+    width: 20px;
+    height: 20px;
+    vertical-align: middle;
+  }
 
-  /* --- NUEVO: Estilos para el selector de fecha --- */
-  #nav-date-form {
-    margin: 0;
+  /* --- Ícono de Cerrar Sesión (Derecha) --- */
+  #logout-link {
+    color: #dc3545;
+    display: flex;
+    align-items: center;
+    padding: 5px;
+    border-radius: 6px;
+    transition: background-color 0.2s;
+    text-decoration: none;
   }
+  #logout-link:hover {
+    background-color: #f8d7da;
+  }
+
+  /* --- Estilos de Admin y Favoritas (ICONOS en el Grupo Izquierdo) --- */
+  .admin-actions { /* Contenedor para iconos de gestión */
+    display: flex;
+    gap: 10px;
+  }
+  .admin-link { 
+    color: #555; 
+    padding: 5px;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .admin-link:hover {
+    background-color: #f0f0f0;
+  }
+  .fav-link {
+    color: #ff9800 !important;
+  }
+
+  /* Selector de Rango de Fechas */
+  #nav-date-form { margin: 0; }
   #nav-date-select {
     font-family: inherit;
     font-size: 14px;
@@ -38,60 +107,70 @@
     background-color: #f9f9f9;
     cursor: pointer;
   }
-  #nav-date-select:hover {
-    border-color: #999;
-  }
-  /* --- Fin de nuevos estilos --- */
 </style>
 
 <nav class="main-nav">
+  
+  <!-- CONTENEDOR IZQUIERDO (nav-group) -->
   <div class="nav-group">
-    <strong>GYMSLIM (Charly)</strong>
     
-    <!-- --- REEMPLAZADO: Enlace de Horario por Selector --- -->
+    <!-- 1. LOGO/HOME -->
+    <a href="/list?range_key=today" class="nav-logo" title="Ir al Horario Principal">
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon" style="width: 24px; height: 24px;"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    </a>
+    
+    <!-- 2. Selector de Rango de Fechas -->
     <form action="/list" method="GET" id="nav-date-form">
       <select name="range_key" id="nav-date-select">
-        <!-- 
-          'locals.range_key' es pasado desde el controlador (appController)
-          para saber qué opción marcar como seleccionada.
-        -->
-        <option value="" disabled <%= !locals.range_key ? "selected" : "" %>>
-          Seleccionar rango...
-        </option>
-        <option value="today" <%= locals.range_key === 'today' ? "selected" : "" %>>
-          Hoy
-        </option>
-        <option value="tomorrow" <%= locals.range_key === 'tomorrow' ? "selected" : "" %>>
-          Mañana
-        </option>
-        <option value="this_week" <%= locals.range_key === 'this_week' ? "selected" : "" %>>
-          Esta Semana
-        </option>
-        <option value="next_7" <%= locals.range_key === 'next_7' ? "selected" : "" %>>
-          Próximos 7 Días
-        </option>
-        <option value="custom">
-          Rango Personalizado...
-        </option>
+        <option value="" disabled <%= !locals.range_key ? "selected" : "" %>>Seleccionar rango...</option>
+        <option value="today" <%= locals.range_key === 'today' ? "selected" : "" %>>Hoy</option>
+        <option value="tomorrow" <%= locals.range_key === 'tomorrow' ? "selected" : "" %>>Mañana</option>
+        <option value="this_week" <%= locals.range_key === 'this_week' ? "selected" : "" %>>Esta Semana</option>
+        <option value="next_7" <%= locals.range_key === 'next_7' ? "selected" : "" %>>Próximos 7 Días</option>
+        <option value="custom">Rango Personalizado...</option>
       </select>
-      <!-- Botón oculto para que el form funcione sin JS (aunque onchange es JS) -->
       <button type="submit" style="display:none;"></button>
     </form>
-    <!-- --- Fin del reemplazo --- -->
+    
+    <!-- 3. ICONOS DE GESTIÓN Y FAVORITAS (Ordenados: Favoritas -> Gestión -> Configuración -> Perfil) -->
+    <div class="admin-actions">
+        <!-- Icono de Gestión de Favoritas -->
+        <a href="/profile/favorites" class="admin-link fav-link" title="Gestionar Favoritas">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+        </a>
+        
+        <% if (user && user.isAdmin) { %>
+            <!-- Icono de Gestión de Usuarios -->
+            <a href="/admin/users" class="admin-link" title="Gestión de Usuarios">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </a>
+            
+            <!-- Icono de Configuración -->
+            <a href="/admin/settings" class="admin-link" title="Configuración del Sistema">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="m9 12 2 2 4-4"/></svg>
+            </a>
+        <% } %>
 
-    <% if (user && user.isAdmin) { %>
-      <a href="/admin" class="admin-link">Admin</a>
-    <% } %>
+        <!-- Icono y Nombre de Perfil (MOVIDO AL FINAL DE LA GESTIÓN) -->
+        <% if (user) { %>
+          <a href="/profile" class="user-info" title="Mi Perfil">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <span><%= user.username %></span>
+          </a>
+        <% } %>
+    </div>
+    
   </div>
-
+  
+  <!-- CONTENEDOR DERECHO (nav-links) -->
   <% if (user) { %>
     <div class="nav-links">
-      <div class="nav-email">
-        Email: <strong><%= activeBookingEmail || 'N/A' %></strong>
-        (<a href="/admin/emails/select">[Cambiar]</a>)
-      </div>
-      <span><%= user.username %></span>
-      <a href="/logout">Cerrar Sesión</a>
+      
+      <!-- ICONO CERRAR SESIÓN (SOLO ESTE EN EL LADO DERECHO) -->
+      <a href="/logout" id="logout-link" title="Cerrar Sesión">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nav-icon"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+      </a>
+
     </div>
   <% } %>
 </nav>

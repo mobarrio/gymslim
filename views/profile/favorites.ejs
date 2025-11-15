@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Favoritas</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        body { padding-top: 70px; } 
+        .container-profile {
+            max-width: 800px;
+            margin: 20px auto;
+        }
+        .favorites-list {
+            list-style: none;
+            padding: 0;
+        }
+        .favorites-list li {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+            font-size: 1.1em;
+        }
+        .favorites-list li:last-child {
+            border-bottom: none;
+        }
+        .favorites-list li:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .add-form {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+        }
+        .add-form input {
+            flex-grow: 1;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+        .btn-remove {
+            background-color: #dc3545;
+            color: white;
+            padding: 5px 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <%- include('../partials/_nav') %>
+
+    <div class="container-profile">
+        <h1>Gestión de Actividades Favoritas</h1>
+        
+        <% if (locals.message) { %>
+            <div class="success-msg"><%= message %></div>
+        <% } %>
+        <% if (locals.error) { %>
+            <div class="error-msg"><%= error %></div>
+        <% } %>
+
+        <p>Añade los nombres de las actividades (ej: Yoga Flow, Body Combat) que quieres que se muestren en el filtro "Mis Favoritas" del horario principal.</p>
+
+        <!-- Formulario para Añadir Favorita -->
+        <form action="/profile/favorites" method="POST" class="add-form">
+            <input type="text" 
+                   name="activityName" 
+                   placeholder="Nombre de la Actividad (ej: CrossFit Avanzado)" 
+                   required>
+            <input type="hidden" name="action" value="add_master">
+            <button type="submit" class="btn-primary">Añadir a Lista</button>
+        </form>
+
+        <h2>Actividades Favoritas Guardadas (<%= favorites.length %>)</h2>
+        
+        <% if (favorites.length === 0) { %>
+            <p>Aún no has añadido actividades a tu lista maestra.</p>
+        <% } else { %>
+            <ul class="favorites-list">
+                <% favorites.forEach(activity => { %>
+                    <li>
+                        <span><%= activity %></span>
+                        <!-- Formulario para Eliminar Favorita -->
+                        <form action="/profile/favorites" method="POST" onsubmit="return confirm('¿Seguro que quieres eliminar <%= activity %>?');">
+                            <input type="hidden" name="activityName" value="<%= activity %>">
+                            <input type="hidden" name="action" value="remove_master">
+                            <button type="submit" class="btn-remove">Eliminar</button>
+                        </form>
+                    </li>
+                <% }) %>
+            </ul>
+        <% } %>
+        
+        <p style="margin-top: 30px;"><a href="/list?filter=favorites" class="btn-secondary-link">Volver al Horario con Filtro</a></p>
+
+    </div>
+    <script src="/js/main.js"></script>
+</body>
+</html>

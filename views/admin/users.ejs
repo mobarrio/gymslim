@@ -3,52 +3,159 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin - Usuarios</title>
+    <title>Gestión de Usuarios</title>
     <link rel="stylesheet" href="/css/style.css">
-    <style> body { padding-top: 50px; } .container { max-width: 1100px; }</style>
+    <style>
+        body { padding-top: 70px; } /* Espacio para el nav fijo */
+        .container-admin { max-width: 950px; margin: 20px auto; }
+        
+        /* --- ACCIONES MODIFICADAS --- */
+        .table-actions {
+            display: flex;
+            flex-wrap: wrap; 
+            gap: 5px; 
+        }
+        .btn-small {
+            padding: 4px 8px;
+            font-size: 12px;
+            text-decoration: none;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .btn-edit { background-color: #007bff; color: white; display: inline-block; } 
+        .btn-change-pass { background-color: #17a2b8; color: white; display: inline-block; } 
+        .btn-reset { background-color: #ffc107; color: #333; }
+        .btn-delete { background-color: #dc3545; color: white; }
+        
+        /* --- NUEVOS ESTILOS --- */
+        .btn-mfa-disable { background-color: #fd7e14; color: white; } /* Quitar MFA */
+        .btn-mfa-force { background-color: #8c00b0; color: white; } /* Forzar Setup (Morado) */
+
+        .btn-secondary-link { margin-left: auto; }
+        
+        form[action*="delete"], 
+        form[action*="reset-pw"],
+        form[action*="disable-mfa"],
+        form[action*="force-mfa"] { 
+            display: inline-block;
+            margin: 0;
+        }
+        
+        /* --- COLUMNAS MODIFICADAS --- */
+        .col-username { width: 15%; }
+        .col-name { width: 15%; }
+        .col-email { width: 20%; }
+        .col-role { width: 8%; }
+        .col-mfa { width: 8%; } 
+        .col-actions { width: 34%; }
+        /* --- FIN MODIFICACIONES --- */
+
+    </style>
 </head>
 <body>
     <%- include('../partials/_nav') %>
 
-    <div class="container">
-        <h1>Gestión de Usuarios</h1>
-        <p>
-            <a href="/admin/users/new" class="btn-primary" style="text-decoration: none;">+ Crear Nuevo Usuario</a>
-            <a href="/admin/emails" style="margin-left: 20px;">Gestionar Emails de Reserva</a>
-        </p>
-        
+    <div class="container-admin">
+        <div class="header">
+            <h1>Gestión de Usuarios</h1>
+            <a href="/admin/users/new" class="btn-primary">Crear Nuevo Usuario</a>
+        </div>
+
         <% if (locals.message) { %>
-            <div class="info-msg"><%= message %></div>
+            <div class="success-msg"><%= message %></div>
         <% } %>
 
+        <!-- Tabla de Usuarios -->
         <table>
-            <tr>
-                <th>ID</th>
-                <th>Usuario</th>
-                <th>Admin</th>
-                <th>Debe Cambiar Pass</th>
-                <th style="width: 250px;">Acciones</th>
-            </tr>
-            <% users.forEach(u => { %>
+            <thead>
                 <tr>
-                    <td><%= u.id %></td>
-                    <td><%= u.username %></td>
-                    <td><%= u.isAdmin ? 'Sí' : 'No' %></td>
-                    <td><%= u.mustChangePassword ? 'Sí' : 'No' %></td>
-                    <td>
-                        <a href="/admin/users/<%= u.id %>/edit" style="margin-right: 10px;">Editar</a>
-                        <form action="/admin/users/<%= u.id %>/reset-pass" method="POST" style="display: inline-block; margin-right: 10px;">
-                            <button type="submit" class="sesion-link" onclick="return confirm('¿Resetear contraseña de <%= u.username %> a (password123)?')">Reset Pass</button>
-                        </form>
-                        <% if (user.id !== u.id) { %> <!-- No borrarse a sí mismo -->
-                            <form action="/admin/users/<%= u.id %>/delete" method="POST" style="display: inline-block;">
-                                <button type="submit" class="sesion-link" style="color: #dc3545;" onclick="return confirm('¿ELIMINAR a <%= u.username %>?')">Eliminar</button>
-                            </form>
-                        <% } %>
-                    </td>
+                    <th class="col-username">Usuario (Login)</th>
+                    <th class="col-name">Nombre</th>
+                    <th class="col-email">Email de Reserva</th>
+                    <th class="col-role">Rol</th>
+                    <th class="col-mfa">MFA</th> 
+                    <th class="col-actions">Acciones</th>
                 </tr>
-            <% }) %>
+            </thead>
+            <tbody>
+                <% users.forEach(user => { %>
+                    <tr>
+                        <td>
+                            <strong><%= user.username %></strong>
+                            <% if (user.mustChangePassword) { %>
+                                <br><small style="color: #e67e22;">(Reset Pass)</small>
+                            <% } %>
+                        </td>
+                        <td>
+                            <%= user.name || 'N/A' %>
+                        </td>
+                        <td>
+                            <%= user.bookingEmail || 'N/A' %>
+                        </td>
+                        <td>
+                            <%= user.isAdmin ? 'Admin' : 'Usuario' %>
+                        </td>
+                        
+                        <!-- CELDA MFA MODIFICADA (Versión Hotel) -->
+                        <td>
+                            <% if (user.mustConfigureMfa) { %>
+                                <span style="color: #8c00b0; font-weight: bold;">Fuerza Setup</span>
+                            <% } else if (user.mfaEnabled) { %>
+                                <span style="color: #28a745; font-weight: bold;">Activado</span>
+                            <% } else { %>
+                                <span style="color: #6c757d;">No</span>
+                            <% } %>
+                        </td>
+                        <!-- FIN CELDA MFA MODIFICADA -->
+
+                        <td>
+                            <div class="table-actions">
+                                <!-- Botón Editar -->
+                                <a href="/admin/users/edit/<%= user.id %>" class="btn-small btn-edit">Editar</a>
+                                
+                                <!-- Botón Cambiar Pass -->
+                                <a href="/admin/users/change-password/<%= user.id %>" class="btn-small btn-change-pass">Cambiar Pass</a>
+
+                                <!-- Botón Reset Pass -->
+                                <form action="/admin/users/reset-pw/<%= user.id %>" method="POST" onsubmit="return confirm('¿Resetear contraseña de <%= user.username %> a "password123"?');">
+                                    <button type="submit" class="btn-small btn-reset">Reset Pass</button>
+                                </form>
+                                
+                                <!-- Botón Forzar Setup MFA (Versión Hotel) -->
+                                <% if (user.id !== locals.user.id) { %>
+                                    <form action="/admin/users/force-mfa/<%= user.id %>" method="POST" onsubmit="return confirm('¿Seguro que quieres FORZAR la configuración de MFA para <%= user.username %>? El usuario será bloqueado hasta que lo haga.');">
+                                        <button type="submit" class="btn-small btn-mfa-force">Forzar Setup MFA</button>
+                                    </form>
+                                <% } %>
+                                
+
+                                <!-- Botón Quitar MFA -->
+                                <% if (user.mfaEnabled && user.id !== locals.user.id) { %>
+                                    <form action="/admin/users/disable-mfa/<%= user.id %>" method="POST" onsubmit="return confirm('¿Seguro que quieres DESACTIVAR el MFA para <%= user.username %>?');">
+                                        <button type="submit" class="btn-small btn-mfa-disable">Quitar MFA</button>
+                                    </form>
+                                <% } %>
+                                
+
+                                <!-- Botón Eliminar (Form) -->
+                                <% if (user.id !== locals.user.id) { %>
+                                    <form action="/admin/users/delete/<%= user.id %>" method="POST" onsubmit="return confirm('¡PELIGRO! ¿Estás seguro de que quieres ELIMINAR a <%= user.username %>?');">
+                                        <button type="submit" class="btn-small btn-delete">Eliminar</button>
+                                    </form>
+                                <% } %>
+                            </div>
+                        </td>
+                    </tr>
+                <% }) %>
+            </tbody>
         </table>
+
     </div>
+    
+    <!-- Script necesario para que la barra de navegación funcione -->
+    <script src="/js/main.js"></script>
+    
 </body>
 </html>

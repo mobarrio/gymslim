@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mi Perfil</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        body { padding-top: 70px; } /* Espacio para el nav fijo */
+        .container-profile {
+            max-width: 600px;
+            margin: 20px auto;
+        }
+        .form-container {
+            margin-bottom: 30px;
+        }
+        /* Estilos de MFA Modal (sin cambios en general, solo para mostrar el texto) */
+        .mfa-modal { display: none; position: fixed; z-index: 1001; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); align-items: center; justify-content: center; }
+        .mfa-modal-content { background-color: #fefefe; margin: auto; padding: 20px; border: 1px solid #888; border-radius: 8px; width: 90%; max-width: 450px; text-align: center; }
+        .mfa-modal-content h3 { margin-top: 0; }
+        #mfa-qr-code { border: 1px solid #ccc; padding: 10px; border-radius: 8px; margin: 20px 0; display: none; }
+        #mfa-qr-code.loading, #mfa-qr-code.loaded { display: block; }
+        #mfa-qr-code.loading { height: 200px; line-height: 200px; color: #888; background-color: #f9f9f9; }
+        #mfa-verify-form input { width: 100%; box-sizing: border-box; text-align: center; font-size: 1.2rem; letter-spacing: 2px; }
+        .mfa-modal-buttons { display: flex; justify-content: space-between; margin-top: 20px; }
+        #mfa-error-message { color: #a00; font-size: 14px; margin-top: 10px; display: none; }
+        .alert-security { background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; padding: 15px; border-radius: 5px; margin-bottom: 20px; font-weight: bold; }
+
+        /* Estilos específicos para la clave OTP */
+        #mfa-manual-key {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1.1em;
+            font-weight: bold;
+            letter-spacing: 1px;
+            color: #007bff;
+            background-color: #f0f8ff;
+            padding: 8px;
+            border-radius: 4px;
+            margin-top: 10px;
+            display: none; /* Oculto hasta que se genera */
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <%- include('../partials/_nav') %>
+
+    <!-- Modal de MFA (Oculto) -->
+    <div id="mfa-modal" class="mfa-modal">
+        <div class="mfa-modal-content">
+            <!-- Contenido para Activar MFA -->
+            <div id="mfa-setup-content">
+                <h3>Activar Autenticación (MFA)</h3>
+                <p>Escanea el código QR con tu app de autenticación (Google Authenticator, Authy, etc.).</p>
+                
+                <div id="mfa-qr-code" class="loading">
+                    Generando código QR...
+                </div>
+                
+                <!-- --- ¡NUEVO! CLAVE MANUAL --- -->
+                <p style="font-size: 0.9em; margin-bottom: 5px;">O introduce la clave manualmente:</p>
+                <div id="mfa-manual-key"></div>
+                <!-- --- FIN NUEVO --- -->
+
+                <p style="margin-top: 15px;">Luego, introduce el código de 6 dígitos para verificar.</p>
+                <form id="mfa-verify-form">
+                    <input type="text" id="mfa-token-input" placeholder="123456" maxlength="6" inputmode="numeric">
+                    <div id="mfa-error-message"></div>
+                    <div class="mfa-modal-buttons">
+                        <button type="button" id="mfa-cancel-button" class="btn-secondary">Cancelar</button>
+                        <button type="submit" id="mfa-verify-button" class="btn-primary">Verificar y Activar</button>
+                    </div>
+                </form>
+            </div>
+            
+            <!-- Contenido para Desactivar MFA -->
+            <div id="mfa-disable-content" style="display: none;">
+                <h3>Desactivar Autenticación (MFA)</h3>
+                <p>Para desactivar el MFA, por favor, introduce tu contraseña actual.</p>
+                <form id="mfa-disable-form">
+                    <label for="mfa-password-input">Contraseña Actual:</label>
+                    <input type="password" id="mfa-password-input" required>
+                    <div id="mfa-error-message-disable"></div>
+                    <div class="mfa-modal-buttons">
+                        <button type="button" id="mfa-cancel-disable-button" class="btn-secondary">Cancelar</button>
+                        <button type="submit" id="mfa-disable-confirm-button" class="btn-primary btn-danger">Desactivar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <!-- FIN MODAL MFA -->
+
+
+    <div class="container-profile">
+        <h1>Mi Perfil</h1>
+
+        <!-- ALERTA DE CONFIGURACIÓN FORZADA -->
+        <% if (mustConfigureMfa) { %>
+            <div class="alert-security">
+                Su administrador ha restablecido la configuración de seguridad. Debe configurar su MFA antes de continuar.
+            </div>
+        <% } %>
+
+        <!-- Notificación de Éxito General (de URL o MFA) -->
+        <% if (locals.message) { %>
+            <div class="success-msg"><%= message %></div>
+        <% } %>
+        <% if (locals.error) { %>
+            <div class="error-msg"><%= error %></div>
+        <% } %>
+
+        <!-- --- Formulario 1: Actualizar Detalles --- -->
+        <form action="/profile/details" method="POST" class="form-container">
+            <h2>Actualizar Detalles</h2>
+            
+            <% if (locals.detailsError) { %>
+                <div class="error-msg"><%= detailsError %></div>
+            <% } %>
+
+            <div>
+                <label for="username">Usuario:</label>
+                <input type="text" id="username" name="username" value="<%= user.username %>" disabled>
+                <small>El nombre de usuario no se puede modificar.</small>
+            </div>
+            <div>
+                <label for="name">Nombre (para reservas):</label>
+                <input type="text" id="name" name="name" value="<%= user.name || '' %>">
+                <small>Tu nombre tal como aparecerá en la reserva.</small>
+            </div>
+            <div>
+                <label for="bookingEmail">Email de Reserva:</label>
+                <input type="email" id="bookingEmail" name="bookingEmail" value="<%= user.bookingEmail || '' %>" required>
+                <small>El email donde recibirás las confirmaciones.</small>
+            </div>
+            <button type="submit" class="btn-primary">Actualizar Detalles</button>
+        </form>
+
+        <!-- --- Formulario 2: Cambiar Contraseña --- -->
+        <form action="/profile/password" method="POST" class="form-container">
+            <h2>Cambiar Contraseña</h2>
+            
+            <% if (locals.passwordError) { %>
+                <div class="error-msg"><%= passwordError %></div>
+            <% } %>
+
+            <div>
+                <label for="currentPassword">Contraseña Actual:</label>
+                <input type="password" id="currentPassword" name="currentPassword" required>
+            </div>
+            <div>
+                <label for="newPassword">Nueva Contraseña:</label>
+                <input type="password" id="newPassword" name="newPassword" required>
+            </div>
+            <div>
+                <label for="confirmPassword">Confirmar Nueva Contraseña:</label>
+                <input type="password" id="confirmPassword" name="confirmPassword" required>
+            </div>
+            <button type="submit" class="btn-primary btn-secondary">Cambiar Contraseña</button>
+        </form>
+
+        <!-- --- Formulario 3: Gestión de MFA (Botones) --- -->
+        <div class="form-container">
+            <h2>Autenticación Multi-Factor (MFA)</h2>
+            <% if (mfaEnabled) { %>
+                <p>Tu cuenta está protegida con MFA.</p>
+                <div class="info-msg">
+                    Estado: <strong style="color: #28a745;">Activado</strong>
+                </div>
+                <button id="mfa-disable-button" class="btn-primary btn-danger" style="margin-top: 15px;">
+                    Desactivar MFA
+                </button>
+            <% } else { %>
+                <p>Añade una capa extra de seguridad a tu cuenta.</p>
+                <div class="info-msg">
+                    Estado: <strong style="color: #6c757d;">Desactivado</strong>
+                </div>
+                <button id="mfa-enable-button" class="btn-primary" style="margin-top: 15px;">
+                    Activar MFA
+                </button>
+            <% } %>
+        </div>
+        
+    </div>
+
+    <script src="/js/main.js"></script>
+
+</body>
+</html>

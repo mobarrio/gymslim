@@ -1,7 +1,7 @@
-// Fichero: controllers/appController.js
-const { ApiCache } = require('../database');
+// Fichero: controllers/appController.js (Versión Kilo - MODIFICADO)
+const { ApiCache, FavoriteActivity } = require('../database'); 
 const { fetchAllApiData } = require('../services/cacheService');
-const { logDebug } = require('../utils/logger');
+const { logDebug } = require('../utils/logger'); 
 
 // Helpers (movidos aquí para estar disponibles)
 const helpers = {
@@ -9,69 +9,74 @@ const helpers = {
   obtenerInstructor: (event) => { if (event.instructors && event.instructors.length > 0) { return event.instructors[0].name || 'N/A'; } if (event.title && event.title.toLowerCase().includes('virtual')) { return ''; } return 'Gimnasio'; },
   obtenerAvatar: (event) => { if (event.instructors && event.instructors.length > 0 && event.instructors[0].avatar) { const avatarUrl = event.instructors[0].avatar; if (avatarUrl.startsWith('http')) return avatarUrl; } return 'https://i.imgur.com/832DYNW.png'; },
   formatearPlazas: (places) => { if (!places) return 'N/A'; const booked = places.booked || 0; const total = places.total || 0; const available = total - booked; return `${booked} / ${total} (${available})`; },
-  formatearFecha: (mobile) => { if (!mobile) return 'N/A'; const diaSemana = helpers.capitalizar(mobile.week_day || ''); const diaMes = mobile.month_day || ''; const hora = mobile.start_time || ''; return `${diaSemana} ${diaMes} ${hora}`; }
+  formatearFecha: (mobile) => { if (!mobile) return 'N/A'; const diaSemana = helpers.capitalizar(mobile.week_day || ''); const diaMes = mobile.month_day || ''; const hora = mobile.start_time || ''; return `${diaSemana} ${diaMes} ${hora}`; },
+  obtenerUrlReserva: (sessionId) => { return `${process.env.BOOKING_API_URL}/${sessionId}`; }
 };
 
-// Función para obtener la fecha de hoy YYYY-MM-DD
-function getTodayString() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
+// --- Funciones Robustas de Fecha ---
+
+function formatDate(dateObj) {
+  const year = dateObj.getFullYear();
+  const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const day = String(dateObj.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
 
-// --- NUEVA FUNCIÓN ---
-/**
- * Convierte un string de rango (ej. 'today') en un objeto { start, end }
- * @param {string} rangeKey - La clave del rango (today, tomorrow, etc.)
- * @returns {{start: string, end: string}}
- */
+function getTodayString() {
+  return formatDate(new Date());
+}
+
+const addDays = (date, days) => {
+  const d = new Date(date);
+  d.setDate(date.getDate() + days);
+  return d;
+};
+
+// --- Fin Funciones Robustas de Fecha ---
+
+
 function calculateDatesFromRangeKey(rangeKey) {
   const today = new Date();
-  const todayStr = today.toISOString().split('T')[0];
-  let startDate = todayStr;
-  let endDate = todayStr;
+  today.setHours(0, 0, 0, 0); 
+  
+  let startDate = formatDate(today);
+  let endDate = formatDate(today);
+  let tempDate = new Date(today); 
 
   switch (rangeKey) {
-    case 'today':
-      // start y end ya son todayStr
-      break;
     case 'tomorrow':
-      const tomorrow = new Date(today);
-      tomorrow.setDate(today.getDate() + 1);
-      const tomorrowStr = tomorrow.toISOString().split('T')[0];
-      startDate = tomorrowStr;
-      endDate = tomorrowStr;
+      tempDate = addDays(today, 1);
+      startDate = formatDate(tempDate);
+      endDate = formatDate(tempDate);
       break;
+      
     case 'next_7':
-      const next7 = new Date(today);
-      next7.setDate(today.getDate() + 6); // 6 días desde hoy = 7 días en total
-      endDate = next7.toISOString().split('T')[0];
+      tempDate = addDays(today, 6); 
+      endDate = formatDate(tempDate);
       break;
+      
     case 'this_week':
-      // Lógica de la Versión Alfa: 0=Dom, 1=Lun
-      const dayOfWeek = today.getUTCDay(); 
+      const dayOfWeek = today.getDay(); 
       const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-      
-      const monday = new Date(today);
-      monday.setDate(today.getDate() + diffToMonday);
-      
-      const sunday = new Date(monday);
-      sunday.setDate(monday.getDate() + 6);
+      const monday = addDays(today, diffToMonday);
+      const sunday = addDays(monday, 6);
 
-      startDate = monday.toISOString().split('T')[0];
-      endDate = sunday.toISOString().split('T')[0];
+      startDate = formatDate(monday);
+      endDate = formatDate(sunday);
       
-      // Asegurarnos de no mostrar días pasados de esta semana
+      const todayStr = getTodayString();
       if (startDate < todayStr) {
         startDate = todayStr;
       }
       break;
+      
+    case 'today':
+    default:
+      break;
   }
+  
   return { start: startDate, end: endDate };
 }
-// --- FIN NUEVA FUNCIÓN ---
 
 
 // GET /horario
@@ -79,35 +84,32 @@ exports.showHorario = (req, res) => {
   const today = getTodayString();
   logDebug(3, "Sirviendo formulario de selección de fecha EJS.");
   
-  // Pasa datos a la plantilla EJS
-  // res.locals.user y res.locals.activeBookingEmail ya están seteados por el middleware global
   res.render('horario', {
     today: today,
-    error: null, // Para manejar errores de /list
-    range_key: 'custom' // Para que el nav muestre "Rango Personalizado..."
+    error: null, 
+    range_key: 'custom'
   });
 };
 
-// GET /list
+// GET /list (MODIFICADO para FAVORITAS por defecto)
 exports.showList = async (req, res) => {
-  // --- LÓGICA DE FECHAS MODIFICADA ---
-  const { start, end, refresh, activity, range_key } = req.query;
+  // CRÍTICO: Si filter no existe, asumimos 'favorites' (antes era 'all')
+  const { start, end, refresh, activity, range_key, filter } = req.query; 
+  const currentFilter = filter || 'favorites'; // <-- ¡CAMBIO CRÍTICO AQUÍ!
+  
   let filterStartDate, filterEndDate, effectiveRangeKey;
 
   const errorRender = (message) => {
-    return res.status(400).render('horario', {
-      today: getTodayString(),
-      error: message,
-      range_key: 'custom'
+    return res.status(400).render('horario', { 
+      today: getTodayString(), 
+      error: message, 
+      range_key: 'custom' 
     });
   };
 
+  // --- LÓGICA DE MANEJO DE RANGO ---
   if (range_key) {
-    // Opción 1: El usuario usó el selector rápido
-    logDebug(3, `Ruta /list accedida con range_key: ${range_key}`);
     if (range_key === 'custom') {
-      // Si seleccionó "Custom", lo mandamos a la página de horario
-      // (Aunque el JS ya hace esto, es un fallback)
       return res.redirect('/horario');
     }
     const dates = calculateDatesFromRangeKey(range_key);
@@ -115,80 +117,104 @@ exports.showList = async (req, res) => {
     filterEndDate = dates.end;
     effectiveRangeKey = range_key;
   } else if (start && end) {
-    // Opción 2: El usuario usó el formulario de /horario (o un bookmark)
-    logDebug(3, `Ruta /list accedida con fechas: ${start} a ${end}`);
     filterStartDate = start;
     filterEndDate = end;
-    // Si las fechas coinciden con un rango, lo seleccionamos
+    
     if (start === end && start === getTodayString()) {
        effectiveRangeKey = 'today';
     } else {
-       effectiveRangeKey = 'custom'; // Si vienen fechas, es un rango custom
+       effectiveRangeKey = 'custom';
     }
   } else {
-    // Opción 3: El usuario accedió a /list sin fechas (ej. desde /)
-    // Redirigimos a una vista por defecto (Hoy)
-    return res.redirect('/list?range_key=today');
+    // Si no hay parámetros, redirigimos a 'today'
+    return res.redirect('/list?range_key=today&filter=' + currentFilter); 
   }
+  // --- FIN LÓGICA DE MANEJO DE RANGO ---
   
   const selectedActivity = activity || 'todas';
   const today = getTodayString();
   
-  logDebug(3, `Filtro final: ${filterStartDate} a ${filterEndDate}, Activity: ${selectedActivity}, Refresh: ${!!refresh}`);
+  logDebug(3, `Filtro final: ${filterStartDate} a ${filterEndDate}, Activity: ${selectedActivity}, Filter Type: ${currentFilter}, Refresh: ${!!refresh}`);
 
   // --- Validación de Fechas ---
   if (!filterStartDate || !filterEndDate) { return errorRender('Fechas de inicio y fin son requeridas.'); }
-  // (Validación de fechas pasadas se maneja en el filtro de "eventsAfterNow")
   if (filterEndDate < filterStartDate) { return errorRender('La fecha fin no puede ser anterior a la fecha inicio.'); }
   // --- Fin Validación ---
 
   try {
     const isRefresh = refresh === 'true';
-    const allEventsFromApi = await fetchAllApiData(isRefresh);
-    logDebug(3, `Total de eventos únicos de API/Cache: ${allEventsFromApi.length}`);
-
-    const allActivityNames = [...new Set(allEventsFromApi.map(e => e.activity_name))]
-      .filter(name => name) // Filtra nulos o strings vacíos
-      .sort();
-    logDebug(3, `Generadas ${allActivityNames.length} actividades únicas para el filtro.`);
-
-    // --- Filtros ---
-    const eventsInDateRange = allEventsFromApi.filter(event => {
-      const eventDateStr = event.start.split('T')[0];
-      return eventDateStr >= filterStartDate && eventDateStr <= filterEndDate;
-    });
-    logDebug(3, `Eventos tras Filtro de Rango: ${eventsInDateRange.length}`);
+    const userId = req.session.userId;
     
-    const now = new Date(); 
-    const eventsAfterNow = eventsInDateRange.filter(event => {
+    // 1. Obtener datos y favoritos
+    const allEventsFromApi = await fetchAllApiData(isRefresh);
+    let favoriteNames = [];
+    
+    const favoriteEntries = await FavoriteActivity.findAll({
+        where: { userId: userId },
+        attributes: ['activityName']
+    });
+    favoriteNames = favoriteEntries.map(e => e.activityName);
+    
+    // 2. Generar lista de actividades para el dropdown
+    const allActivityNames = [...new Set(allEventsFromApi.map(e => e.activity_name))]
+      .filter(name => name)
+      .sort();
+
+    // --- APLICACIÓN DE FILTROS ---
+
+    // Filtro inicial: Rango de Fechas y Hora Actual
+    let eventsFiltered = allEventsFromApi.filter(event => {
       const eventDateStr = event.start.split('T')[0];
+      
+      // Filtro 1: Rango de fechas
+      if (eventDateStr < filterStartDate || eventDateStr > filterEndDate) {
+          return false;
+      }
+      
+      // Filtro 2: Hora actual (para hoy)
       if (eventDateStr === today) {
         const eventStartTime = new Date(event.start);
-        return eventStartTime >= now;
+        return eventStartTime >= new Date(); 
       }
-      // Si la fecha del evento es futura, siempre es true
-      return eventDateStr > today;
+      
+      return true;
     });
-    logDebug(3, `Eventos tras Filtro de Hora: ${eventsAfterNow.length}`);
 
-    const finalFilteredEvents = (selectedActivity === 'todas')
-      ? eventsAfterNow
-      : eventsAfterNow.filter(event => event.activity_name === selectedActivity);
-    logDebug(3, `Eventos tras Filtro de Actividad (${selectedActivity}): ${finalFilteredEvents.length}`);
+    // Filtro 3: FAVORITAS (Si el filtro es 'favorites')
+    if (currentFilter === 'favorites') {
+        eventsFiltered = eventsFiltered.filter(event => 
+            favoriteNames.includes(event.activity_name)
+        );
+        logDebug(3, `Eventos tras Filtro Favoritas: ${eventsFiltered.length} (de ${favoriteNames.length} favoritas)`);
+    }
 
-    // --- Renderizar ---
+
+    // Filtro 4: ACTIVIDAD (Filtro de dropdown)
+    if (selectedActivity !== 'todas') {
+        eventsFiltered = eventsFiltered.filter(event => 
+            event.activity_name === selectedActivity
+        );
+        logDebug(3, `Eventos tras Filtro de Actividad: ${eventsFiltered.length}`);
+    }
+    // --- FIN APLICACIÓN DE FILTROS ---
+
+
+    // 3. Renderizar
     res.render('list', {
-      events: finalFilteredEvents,
+      events: eventsFiltered,
       allActivityNames: allActivityNames,
+      favoriteNames: favoriteNames, 
       startDate: filterStartDate,
       endDate: filterEndDate,
       selectedActivity: selectedActivity,
-      helpers: helpers, // Pasamos los helpers a la vista
-      range_key: effectiveRangeKey // Pasamos el range_key para el <select>
+      currentFilter: currentFilter, 
+      helpers: helpers,
+      range_key: effectiveRangeKey
     });
 
   } catch (error) {
     console.error("Error al procesar /list:", error);
-    res.status(500).send('Error procesando la solicitud: ' + error.message);
+    logDebug(1, `Error en showList: ${error.message}`);
+    res.status(500).send('Error procesando la solicitud de clases: ' + error.message);
   }
 };
