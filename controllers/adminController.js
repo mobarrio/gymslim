@@ -1,18 +1,17 @@
-// Fichero: controllers/adminController.js (Versión Hotel/Golf - FINAL)
+// Fichero: controllers/adminController.js (Versión Papa - CORREGIDO)
 const { User, sequelize, TrustedDevice, ApiCache } = require('../database'); 
 const bcrypt = require('bcrypt');
 const { logDebug } = require('../utils/logger'); 
+// Importamos getSetting y updateSetting
 const { getSetting, updateSetting } = require('../utils/settingsCache');
-const { fetchAllApiData } = require('../services/cacheService'); // Para la función de purga
+const { fetchAllApiData } = require('../services/cacheService');
 
 // --- Dashboard ---
 exports.showDashboard = (req, res) => {
-  res.redirect('/admin/users'); // Redirige a la lista de usuarios
+  res.redirect('/admin/users');
 };
 
-// --- Gestión de Usuarios (Versión Delta/Echo/Hotel) ---
-
-// Mostrar lista de todos los usuarios
+// --- Gestión de Usuarios (Sin cambios) ---
 exports.listUsers = async (req, res) => {
   try {
     const users = await User.findAll({ 
@@ -24,8 +23,6 @@ exports.listUsers = async (req, res) => {
     res.status(500).send('Error al listar usuarios: ' + error.message);
   }
 };
-
-// Mostrar formulario para crear o editar usuario
 exports.showUserForm = async (req, res) => {
   try {
     const userId = req.params.id;
@@ -38,8 +35,6 @@ exports.showUserForm = async (req, res) => {
     res.status(500).send('Error: ' + error.message);
   }
 };
-
-// Crear nuevo usuario
 exports.createUser = async (req, res) => {
   const { username, password, name, bookingEmail, isAdmin } = req.body;
   
@@ -65,8 +60,6 @@ exports.createUser = async (req, res) => {
     });
   }
 };
-
-// Actualizar usuario existente
 exports.updateUser = async (req, res) => {
   const userId = req.params.id;
   const { username, name, bookingEmail, isAdmin } = req.body;
@@ -91,8 +84,6 @@ exports.updateUser = async (req, res) => {
     });
   }
 };
-
-// Eliminar usuario
 exports.deleteUser = async (req, res) => {
   const userId = req.params.id;
   if (req.session.userId == userId) {
@@ -106,18 +97,16 @@ exports.deleteUser = async (req, res) => {
   }
 };
 
-// --- Gestión de Contraseñas (Versión Echo) ---
-
-// Resetea la contraseña a 'password123'
+// --- Gestión de Contraseñas (Sin cambios) ---
 exports.resetUserPassword = async (req, res) => {
   const userId = req.params.id;
-  const newPassword = 'password123'; // Contraseña temporal
+  const newPassword = 'password123';
   try {
     const user = await User.findByPk(userId);
     if (!user) return res.status(404).send('Usuario no encontrado');
 
     user.passwordHash = await bcrypt.hash(newPassword, parseInt(process.env.SALT_ROUNDS, 10));
-    user.mustChangePassword = true; // Forzar cambio
+    user.mustChangePassword = true; 
     await user.save();
 
     res.redirect(`/admin/users?message=Contraseña de ${user.username} reseteada a "${newPassword}"`);
@@ -125,8 +114,6 @@ exports.resetUserPassword = async (req, res) => {
     res.status(500).send('Error al resetear contraseña: ' + error.message);
   }
 };
-
-// Muestra el formulario para que un admin cambie la contraseña de un usuario.
 exports.showChangePasswordForm = async (req, res) => {
   try {
     const user = await User.findByPk(req.params.id);
@@ -142,8 +129,6 @@ exports.showChangePasswordForm = async (req, res) => {
     res.redirect('/admin/users?message=Error: ' + error.message);
   }
 };
-
-// Procesa el cambio de contraseña realizado por un admin.
 exports.changeUserPassword = async (req, res) => {
   const { newPassword, confirmPassword } = req.body;
   const userId = req.params.id;
@@ -178,9 +163,7 @@ exports.changeUserPassword = async (req, res) => {
   }
 };
 
-// --- Gestión de MFA (Versión Foxtrot/Hotel) ---
-
-// Desactiva el MFA para un usuario.
+// --- Gestión de MFA (Sin cambios) ---
 exports.adminDisableMfa = async (req, res) => {
   const userId = req.params.id;
   const adminUsername = req.session.user.username;
@@ -211,8 +194,6 @@ exports.adminDisableMfa = async (req, res) => {
     res.redirect('/admin/users?message=' + encodeURIComponent(`Error al desactivar MFA: ${error.message}`));
   }
 };
-
-// Fuerza a un usuario a (re)configurar MFA en su próximo login.
 exports.adminForceMfaSetup = async (req, res) => {
   const userId = req.params.id;
   const adminUsername = req.session.user.username;
@@ -244,16 +225,23 @@ exports.adminForceMfaSetup = async (req, res) => {
   }
 };
 
-// --- Gestión de Configuración (Versión Golf) ---
+// --- Gestión de Configuración (MODIFICADO) ---
 
-// Muestra la página de configuración del sistema.
+/**
+ * GET /admin/settings
+ * Muestra la página de configuración del sistema.
+ */
 exports.showSettings = (req, res) => {
   try {
+    // --- ¡CORRECCIÓN! Leemos ambos valores de la caché ---
     const trustedDays = getSetting('trusted_device_days', '30');
+    const cacheEnabled = getSetting('cache_enabled', 'true');
+    // --- FIN CORRECCIÓN ---
     
     res.render('admin/settings', {
       settings: {
-        trusted_device_days: trustedDays
+        trusted_device_days: trustedDays,
+        cache_enabled: cacheEnabled // <-- Pasar el valor a la vista
       },
       message: req.query.message || null,
       error: req.query.error || null
@@ -264,34 +252,46 @@ exports.showSettings = (req, res) => {
   }
 };
 
-// Actualiza la configuración del sistema.
+/**
+ * POST /admin/settings
+ * Actualiza la configuración del sistema.
+ */
 exports.saveSettings = async (req, res) => {
-  const { trusted_device_days } = req.body;
+  // --- ¡CORRECCIÓN! Leemos 'cache_enabled' del formulario ---
+  const { trusted_device_days, cache_enabled } = req.body;
   
   try {
+    // 1. Guardar Días de Confianza
     const days = parseInt(trusted_device_days, 10);
     if (isNaN(days) || days < 1 || days > 365) {
       throw new Error('Los días deben ser un número entre 1 y 365.');
     }
-
     await updateSetting('trusted_device_days', days.toString());
+
+    // 2. Guardar Estado de Caché
+    // Si el checkbox está marcado, req.body.cache_enabled será "true"
+    // Si NO está marcado, req.body.cache_enabled será 'undefined'
+    const newCacheState = (cache_enabled === 'true') ? 'true' : 'false';
+    await updateSetting('cache_enabled', newCacheState);
+    // --- FIN CORRECCIÓN ---
 
     res.redirect('/admin/settings?message=Configuración guardada con éxito');
 
   } catch (error) {
     logDebug(1, '[Admin] Error al guardar configuraciones:', error.message);
+    // Volver a cargar los valores actuales en caso de error
     const trustedDays = getSetting('trusted_device_days', '30'); 
+    const cacheEnabled = getSetting('cache_enabled', 'true');
     res.render('admin/settings', {
       settings: {
-        trusted_device_days: trustedDays 
+        trusted_device_days: trustedDays,
+        cache_enabled: cacheEnabled
       },
       message: null,
       error: error.message
     });
   }
 };
-
-// --- ¡NUEVA FUNCIÓN! Purga de Caché (Versión Golf) ---
 
 /**
  * POST /admin/settings/purge-cache

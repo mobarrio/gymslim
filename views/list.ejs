@@ -160,9 +160,9 @@
                         const instructor = helpers.obtenerInstructor(event);
                         const avatar = helpers.obtenerAvatar(event);
                         const places = event.booking_info.places;
-                        
-                        // --- LÓGICA DE RESERVA (Versión Oscar/November) ---
                         const bookingInfo = event.booking_info || {};
+                        
+                        // --- LÓGICA DE RESERVA (Versión Papa - REGLAS DE VISUALIZACIÓN) ---
                         const isSoldOut = bookingInfo.sold_out === true;
                         const isTooLate = bookingInfo.too_late === true;
                         const isTooSoon = bookingInfo.too_soon === true;
@@ -177,6 +177,7 @@
                             sessionText = 'SIN PLAZAS';
                             isBookable = false;
                         } else if (isTooLate || isTooSoon || isAvailableFalse) {
+                            // Esta es la regla compleja para CLASE CERRADA
                             rowClass = 'non-bookable-row';
                             sessionText = 'CLASE CERRADA';
                             isBookable = false;

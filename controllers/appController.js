@@ -1,4 +1,4 @@
-// Fichero: controllers/appController.js (CORRECCIÓN: const -> let)
+// Fichero: controllers/appController.js (CORRECCIÓN DE SINTAXIS Y FILTRO)
 const { ApiCache, FavoriteActivity } = require('../database'); 
 const { fetchAllApiData } = require('../services/cacheService');
 const { logDebug } = require('../utils/logger'); 
@@ -91,18 +91,15 @@ exports.showHorario = (req, res) => {
   });
 };
 
-// GET /list (CORREGIDO)
+// GET /list (MODIFICADO para soportar filtro de cerrar clases)
 exports.showList = async (req, res) => {
-  // Capturar 'showClosed' y 'filter'
+  // Capturar nuevo 'showClosed'
   const { start, end, refresh, activity, range_key, filter, showClosed } = req.query; 
   
-  // --- ¡¡¡AQUÍ ESTÁ LA CORRECCIÓN!!! ---
-  // Declaramos 'currentFilter' con 'let' para que pueda ser reasignado
   let currentFilter = filter; 
   
-  // 'showClosedState' sí puede ser 'const'
+  // ¡NUEVA LÓGICA! Por defecto, showClosed es 'false' (oculto)
   const showClosedState = showClosed === 'true'; 
-  // --- FIN DE LA CORRECCIÓN ---
 
   let filterStartDate, filterEndDate, effectiveRangeKey;
 
@@ -133,10 +130,10 @@ exports.showList = async (req, res) => {
        effectiveRangeKey = 'custom';
     }
   } else {
-    // Default: Redirigir a 'today' (Mantenemos los filtros actuales si existen)
+    // Default: Redirigir a 'today'
     const queryParams = new URLSearchParams({ 
         range_key: 'today',
-        filter: currentFilter || '', // (currentFilter es undefined aquí, se calculará después)
+        filter: currentFilter || '', 
         showClosed: showClosedState.toString()
     });
     return res.redirect(`/list?${queryParams.toString()}`); 
@@ -167,10 +164,10 @@ exports.showList = async (req, res) => {
     });
     favoriteNames = favoriteEntries.map(e => e.activityName);
     
-    // --- LÓGICA DE FILTRO INTELIGENTE (Ahora funciona) ---
-    if (!currentFilter) { // Si no se especificó filtro en la URL
+    // --- LÓGICA DE FILTRO INTELIGENTE (Existente) ---
+    if (!filter) { // Si no se especificó filtro en la URL
       if (favoriteNames.length > 0) {
-        currentFilter = 'favorites'; // <-- Esta es la Línea 169 (aprox) que fallaba
+        currentFilter = 'favorites';
         logDebug(2, `[App] Filtro no especificado. Aplicando 'favorites' por defecto (encontró ${favoriteNames.length})`);
       } else {
         currentFilter = 'all';
@@ -206,7 +203,8 @@ exports.showList = async (req, res) => {
 
     logDebug(3, `Eventos tras Filtro de Fecha/Hora: ${eventsFiltered.length}`);
 
-    // --- FILTRO 2: OCULTAR CLASES CERRADAS/AGOTADAS (CRÍTICO - Versión Oscar) ---
+    // --- FILTRO 2: OCULTAR CLASES CERRADAS/AGOTADAS (CRÍTICO - Versión Papa) ---
+    // Si showClosedState es FALSO (por defecto), ocultamos las clases no reservables.
     if (!showClosedState) {
         eventsFiltered = eventsFiltered.filter(event => {
             const bookingInfo = event.booking_info || {};
@@ -217,7 +215,7 @@ exports.showList = async (req, res) => {
             if (bookingInfo.too_soon === true) return false; // Ocultar
             if (bookingInfo.available === false) return false; // Ocultar
             
-            // Si no coincide con ninguna regla de cierre, se muestra
+            // Si no coincide con ninguna regla de cierre, se muestra (available: true)
             return true;
         });
         logDebug(3, `Eventos tras Ocultar Cerradas: ${eventsFiltered.length}`);
@@ -260,7 +258,7 @@ exports.showList = async (req, res) => {
 
   } catch (error) {
     console.error("Error al procesar /list:", error);
-    logDebug(1, `Error en showList: ${error.message}`);
+    // ¡CORRECCIÓN DE SINTAXIS AQUÍ!
     res.status(500).send('Error procesando la solicitud de clases: ' + error.message);
   }
 };

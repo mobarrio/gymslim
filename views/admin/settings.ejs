@@ -26,6 +26,19 @@
             border-radius: 5px;
             font-weight: bold;
         }
+        .setting-group {
+            border: 1px solid #eee;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+        .setting-group input[type="checkbox"] {
+            margin-right: 10px;
+        }
+        .setting-group label {
+            font-weight: bold;
+            display: inline-block;
+        }
     </style>
 </head>
 <body>
@@ -41,13 +54,13 @@
             <div class="error-msg"><%= error %></div>
         <% } %>
 
-        <!-- Formulario 1: Gestión de Días de Confianza -->
+        <!-- Formulario 1: Gestión de Días de Confianza y Caché -->
         <form action="/admin/settings" method="POST" class="form-container">
             
-            <h2>Seguridad (MFA)</h2>
-            <div>
+            <h2>Seguridad y Rendimiento</h2>
+
+            <div class="setting-group">
                 <label for="trusted_device_days">Duración del "Dispositivo de Confianza" (días)</label>
-                <!-- Se rellena con el valor dinámico de la BDD -->
                 <input type="number" 
                        id="trusted_device_days" 
                        name="trusted_device_days" 
@@ -55,7 +68,17 @@
                        min="1" 
                        max="365" 
                        required>
-                <small>Tiempo (1-365 días) que un dispositivo será recordado antes de volver a pedir el código MFA.</small>
+            </div>
+            
+            <!-- ¡NUEVO! Control de Caché -->
+            <div class="setting-group">
+                <input type="checkbox" 
+                       id="cache_enabled" 
+                       name="cache_enabled" 
+                       value="true"
+                       <%= settings.cache_enabled === 'true' ? 'checked' : '' %>>
+                <label for="cache_enabled">Activar Caché de Horarios (Recomendado)</label>
+                <small style="display: block; color: #777; margin-left: 25px;">Si se desactiva, cada carga de página llamará a la API externa.</small>
             </div>
             
             <button type="submit" class="btn-primary">Guardar Configuración</button>
@@ -64,9 +87,8 @@
         <!-- Formulario 2: Purga de Caché -->
         <div class="form-container purge-section">
             <h2>Gestión de Caché</h2>
-            <p>Borra todas las entradas de horarios guardadas para forzar una recarga inmediata de la API externa en el próximo acceso.</p>
+            <p>Borra todas las entradas de horarios guardadas para forzar una recarga inmediata de la API externa.</p>
             
-            <!-- El formulario llama a la ruta de purga con POST -->
             <form action="/admin/settings/purge-cache" method="POST" onsubmit="return confirm('ADVERTENCIA: ¿Estás seguro de que quieres PURGAR TODA la caché de horarios? Esto forzará una recarga inmediata de la API.');">
                 <button type="submit" class="btn-purge">Purgar Cache de Clases</button>
             </form>
@@ -74,8 +96,6 @@
 
     </div>
 
-    <!-- Script (para el nav) -->
     <script src="/js/main.js"></script>
-
 </body>
 </html>
