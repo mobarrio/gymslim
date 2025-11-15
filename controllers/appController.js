@@ -1,4 +1,4 @@
-// Fichero: controllers/appController.js (Versión Lima - MODIFICADO)
+// Fichero: controllers/appController.js (CORRECCIÓN: const -> let)
 const { ApiCache, FavoriteActivity } = require('../database'); 
 const { fetchAllApiData } = require('../services/cacheService');
 const { logDebug } = require('../utils/logger'); 
@@ -91,12 +91,19 @@ exports.showHorario = (req, res) => {
   });
 };
 
-// GET /list (MODIFICADO para filtro inteligente)
+// GET /list (CORREGIDO)
 exports.showList = async (req, res) => {
-  // CRÍTICO: 'filter' puede estar indefinido en la carga inicial
-  const { start, end, refresh, activity, range_key, filter } = req.query; 
-  let currentFilter = filter; // <-- Se inicializa como undefined si no viene
+  // Capturar 'showClosed' y 'filter'
+  const { start, end, refresh, activity, range_key, filter, showClosed } = req.query; 
   
+  // --- ¡¡¡AQUÍ ESTÁ LA CORRECCIÓN!!! ---
+  // Declaramos 'currentFilter' con 'let' para que pueda ser reasignado
+  let currentFilter = filter; 
+  
+  // 'showClosedState' sí puede ser 'const'
+  const showClosedState = showClosed === 'true'; 
+  // --- FIN DE LA CORRECCIÓN ---
+
   let filterStartDate, filterEndDate, effectiveRangeKey;
 
   const errorRender = (message) => {
@@ -107,7 +114,7 @@ exports.showList = async (req, res) => {
     });
   };
 
-  // --- LÓGICA DE MANEJO DE RANGO ---
+  // --- LÓGICA DE MANEJO DE RANGO (Existente) ---
   if (range_key) {
     if (range_key === 'custom') {
       return res.redirect('/horario');
@@ -126,15 +133,20 @@ exports.showList = async (req, res) => {
        effectiveRangeKey = 'custom';
     }
   } else {
-    // Default: Redirigir a 'today' (la ruta raíz ya hace esto)
-    return res.redirect('/list?range_key=today'); 
+    // Default: Redirigir a 'today' (Mantenemos los filtros actuales si existen)
+    const queryParams = new URLSearchParams({ 
+        range_key: 'today',
+        filter: currentFilter || '', // (currentFilter es undefined aquí, se calculará después)
+        showClosed: showClosedState.toString()
+    });
+    return res.redirect(`/list?${queryParams.toString()}`); 
   }
   // --- FIN LÓGICA DE MANEJO DE RANGO ---
   
   const selectedActivity = activity || 'todas';
   const today = getTodayString();
   
-  logDebug(3, `Filtro final: ${filterStartDate} a ${filterEndDate}, Activity: ${selectedActivity}, Filter Type: ${currentFilter}, Refresh: ${!!refresh}`);
+  logDebug(3, `Filtro final: ${filterStartDate} a ${filterEndDate}, Closed: ${showClosedState}, Filter Type: ${currentFilter}, Refresh: ${!!refresh}`);
 
   // --- Validación de Fechas ---
   if (!filterStartDate || !filterEndDate) { return errorRender('Fechas de inicio y fin son requeridas.'); }
@@ -145,7 +157,7 @@ exports.showList = async (req, res) => {
     const isRefresh = refresh === 'true';
     const userId = req.session.userId;
     
-    // 1. Obtener datos y favoritos (siempre los necesitamos)
+    // 1. Obtener datos y favoritos
     const allEventsFromApi = await fetchAllApiData(isRefresh);
     let favoriteNames = [];
     
@@ -155,10 +167,10 @@ exports.showList = async (req, res) => {
     });
     favoriteNames = favoriteEntries.map(e => e.activityName);
     
-    // --- ¡NUEVA LÓGICA DE FILTRO INTELIGENTE! ---
+    // --- LÓGICA DE FILTRO INTELIGENTE (Ahora funciona) ---
     if (!currentFilter) { // Si no se especificó filtro en la URL
       if (favoriteNames.length > 0) {
-        currentFilter = 'favorites';
+        currentFilter = 'favorites'; // <-- Esta es la Línea 169 (aprox) que fallaba
         logDebug(2, `[App] Filtro no especificado. Aplicando 'favorites' por defecto (encontró ${favoriteNames.length})`);
       } else {
         currentFilter = 'all';
@@ -174,16 +186,16 @@ exports.showList = async (req, res) => {
 
     // --- APLICACIÓN DE FILTROS ---
 
-    // Filtro inicial: Rango de Fechas y Hora Actual
+    // Filtro 1: Rango de Fechas y Hora Actual
     let eventsFiltered = allEventsFromApi.filter(event => {
       const eventDateStr = event.start.split('T')[0];
       
-      // Filtro 1: Rango de fechas
+      // Filtro de rango
       if (eventDateStr < filterStartDate || eventDateStr > filterEndDate) {
           return false;
       }
       
-      // Filtro 2: Hora actual (para hoy)
+      // Filtro de hora (para hoy)
       if (eventDateStr === today) {
         const eventStartTime = new Date(event.start);
         return eventStartTime >= new Date(); 
@@ -194,21 +206,26 @@ exports.showList = async (req, res) => {
 
     logDebug(3, `Eventos tras Filtro de Fecha/Hora: ${eventsFiltered.length}`);
 
-    // Filtro 3: OCULTAR CLASES CERRADAS/AGOTADAS
-    // (Esta lógica se implementó en la Versión Oscar/November)
-    // Asumimos que showClosedState se maneja, si no, se define aquí
-    const showClosedState = req.query.showClosed === 'true';
+    // --- FILTRO 2: OCULTAR CLASES CERRADAS/AGOTADAS (CRÍTICO - Versión Oscar) ---
     if (!showClosedState) {
         eventsFiltered = eventsFiltered.filter(event => {
-            const isSoldOut = event.booking_info && event.booking_info.sold_out;
-            const isClosed = event.booking_info && event.booking_info.available === false;
-            return !isSoldOut && !isClosed;
+            const bookingInfo = event.booking_info || {};
+            
+            // Usamos la lógica exacta que solicitaste
+            if (bookingInfo.sold_out === true) return false; // Ocultar
+            if (bookingInfo.too_late === true) return false; // Ocultar
+            if (bookingInfo.too_soon === true) return false; // Ocultar
+            if (bookingInfo.available === false) return false; // Ocultar
+            
+            // Si no coincide con ninguna regla de cierre, se muestra
+            return true;
         });
         logDebug(3, `Eventos tras Ocultar Cerradas: ${eventsFiltered.length}`);
     }
+    // --- FIN FILTRO CRÍTICO ---
 
 
-    // Filtro 4: FAVORITAS
+    // Filtro 3: FAVORITAS
     if (currentFilter === 'favorites') {
         eventsFiltered = eventsFiltered.filter(event => 
             favoriteNames.includes(event.activity_name)
@@ -217,7 +234,7 @@ exports.showList = async (req, res) => {
     }
 
 
-    // Filtro 5: ACTIVIDAD (Filtro de dropdown)
+    // Filtro 4: ACTIVIDAD (Filtro de dropdown)
     if (selectedActivity !== 'todas') {
         eventsFiltered = eventsFiltered.filter(event => 
             event.activity_name === selectedActivity
@@ -236,7 +253,7 @@ exports.showList = async (req, res) => {
       endDate: filterEndDate,
       selectedActivity: selectedActivity,
       currentFilter: currentFilter, 
-      showClosedState: showClosedState, 
+      showClosedState: showClosedState, // <-- Pasar el nuevo estado
       helpers: helpers,
       range_key: effectiveRangeKey
     });

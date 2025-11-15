@@ -41,6 +41,7 @@
             gap: 20px;
             margin-bottom: 20px;
             align-items: center;
+            flex-wrap: wrap; /* Permite que los controles se ajusten en móvil */
         }
         
         /* Estilo de texto para estados no reservables */
@@ -50,10 +51,7 @@
             font-size: 13px;
         }
         
-        /* --- ESTILOS CRÍTICOS DE FILA --- */
-        
-        /* Fila de Clase No Reservable (Unificado) */
-        /* Color solicitado: rgb(255, 133, 104) con opacidad para ser suave */
+        /* --- ESTILOS CRÍTICOS DE FILA (Non-Bookable) --- */
         .non-bookable-row {
             background-color: rgb(255, 133, 104, 0.5) !important; 
             opacity: 0.95;
@@ -62,7 +60,12 @@
         .non-bookable-row:hover {
             background-color: rgb(255, 133, 104, 0.7) !important;
         }
-        /* --- FIN ESTILOS CRÍTICOS --- */
+        /* Estilo para el Checkbox de Cerradas */
+        #closedFilterForm label {
+            font-weight: normal;
+            margin-left: 5px;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -76,6 +79,7 @@
         <h2>Clases de <%= startDate %> a <%= endDate %></h2>
 
         <div class="filter-controls">
+            
             <!-- Selector 1: Filtro por Actividad -->
             <form id="activityFilterForm" action="/list" method="GET">
                 <label for="activity_filter">Filtrar por Actividad:</label>
@@ -87,10 +91,12 @@
                         </option>
                     <% }) %>
                 </select>
-                <!-- Mantener parámetros -->
+                <!-- Mantener parámetros de fecha, filtro de favoritos y filtro de cerradas -->
                 <input type="hidden" name="start" value="<%= startDate %>">
                 <input type="hidden" name="end" value="<%= endDate %>">
-                <input type="hidden" name="filter" value="<%= currentFilter %>"> 
+                <input type="hidden" name="filter" value="<%= currentFilter %>">
+                <!-- IMPORTANTISIMO: mantener el estado del checkbox -->
+                <input type="hidden" name="showClosed" value="<%= showClosedState ? 'true' : 'false' %>">
             </form>
 
             <!-- Selector 2: Filtro Favoritas -->
@@ -100,10 +106,28 @@
                     <option value="all" <%= currentFilter === 'all' ? 'selected' : '' %>>Todas las clases</option>
                     <option value="favorites" <%= currentFilter === 'favorites' ? 'selected' : '' %>>Mis Favoritas</option>
                 </select>
-                <!-- Mantener parámetros -->
+                <!-- Mantener parámetros de fecha, actividad y filtro de cerradas -->
                 <input type="hidden" name="start" value="<%= startDate %>">
                 <input type="hidden" name="end" value="<%= endDate %>">
                 <input type="hidden" name="activity" value="<%= selectedActivity %>">
+                <input type="hidden" name="showClosed" value="<%= showClosedState ? 'true' : 'false' %>">
+            </form>
+
+            <!-- Selector 3: Checkbox Mostrar Cerradas (NUEVO) -->
+            <form id="closedFilterForm" action="/list" method="GET">
+                <input type="checkbox" 
+                       id="showClosed" 
+                       name="showClosed" 
+                       value="true" 
+                       onchange="this.form.submit()"
+                       <%= showClosedState ? 'checked' : '' %>>
+                <label for="showClosed">Mostrar clases no reservables</label>
+                
+                <!-- Mantener parámetros de contexto -->
+                <input type="hidden" name="start" value="<%= startDate %>">
+                <input type="hidden" name="end" value="<%= endDate %>">
+                <input type="hidden" name="activity" value="<%= selectedActivity %>">
+                <input type="hidden" name="filter" value="<%= currentFilter %>"> 
             </form>
         </div>
 
@@ -137,26 +161,25 @@
                         const avatar = helpers.obtenerAvatar(event);
                         const places = event.booking_info.places;
                         
-                        // --- LÓGICA DE RESERVA (Versión November - REVISADA) ---
-                        // 1. Sin Plazas (Agotado) - Si el campo sold_out es true.
-                        const isSoldOut = event.booking_info && event.booking_info.sold_out; 
+                        // --- LÓGICA DE RESERVA (Versión Oscar/November) ---
+                        const bookingInfo = event.booking_info || {};
+                        const isSoldOut = bookingInfo.sold_out === true;
+                        const isTooLate = bookingInfo.too_late === true;
+                        const isTooSoon = bookingInfo.too_soon === true;
+                        const isAvailableFalse = bookingInfo.available === false;
                         
-                        // 2. Clase Cerrada - Si el campo available es false (y no está sold_out, para evitar doble etiquetado)
-                        const isClosed = event.booking_info && event.booking_info.available === false && !isSoldOut;
-
-                        // Determinar si es reservable
-                        const isBookable = !isSoldOut && !isClosed; 
-                        
-                        // Determinamos la clase de fila y el mensaje
                         let rowClass = '';
                         let sessionText = '';
+                        let isBookable = true;
 
                         if (isSoldOut) {
                             rowClass = 'non-bookable-row';
                             sessionText = 'SIN PLAZAS';
-                        } else if (isClosed) {
+                            isBookable = false;
+                        } else if (isTooLate || isTooSoon || isAvailableFalse) {
                             rowClass = 'non-bookable-row';
                             sessionText = 'CLASE CERRADA';
+                            isBookable = false;
                         }
                         
                         const plazasDisplay = helpers.formatearPlazas(places);
